@@ -199,7 +199,9 @@ prometheus_node/
 │   │   │   └── storage_backend.cpp
 │   │   │
 │   │   └── accelerator/
+│   │       ├── CMakeLists.txt
 │   │       ├── accelerator_backend.hpp
+│   │       ├── hailo_backend.hpp
 │   │       ├── hailo_backend.cpp
 │   │       └── imx500_backend.cpp
 │   │
@@ -551,6 +553,7 @@ prometheus_node/
 │   │   ├── messaging/
 │   │   ├── mesh/
 │   │   ├── backends/
+│   │   │   └── test_hailo_backend.cpp
 │   │   ├── services/
 │   │   ├── storage/
 │   │   ├── security/
@@ -604,6 +607,7 @@ prometheus_node/
 │   └── main.cpp
 │
 ├── docs/
+│   ├── PROJECT_TREE.md
 │   ├── architecture/
 │   │   ├── node_runtime.md
 │   │   ├── service_model.md

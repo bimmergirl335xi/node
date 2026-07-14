@@ -197,3 +197,23 @@ add_test(
     NAME prometheus_cpu_thread_pool
     COMMAND test_cpu_thread_pool
 )
+
+if(NOT TARGET prometheus_hailo_backend)
+    message(FATAL_ERROR "prometheus_hailo_backend target is unavailable")
+endif()
+
+add_executable(test_hailo_backend
+    test_hailo_backend.cpp
+)
+
+target_link_libraries(test_hailo_backend
+    PRIVATE
+        prometheus_hailo_backend
+)
+
+target_compile_features(test_hailo_backend PRIVATE cxx_std_17)
+
+add_test(
+    NAME prometheus_hailo_backend
+    COMMAND test_hailo_backend
+)
