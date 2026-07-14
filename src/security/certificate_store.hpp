@@ -1,0 +1,6 @@
+#ifndef SRC_SECURITY_CERTIFICATE_STORE_HPP
+#define SRC_SECURITY_CERTIFICATE_STORE_HPP
+
+// TODO: Implement src/security/certificate_store.hpp.
+
+#endif  // SRC_SECURITY_CERTIFICATE_STORE_HPP

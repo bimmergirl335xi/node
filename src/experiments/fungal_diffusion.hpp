@@ -1,0 +1,6 @@
+#ifndef SRC_EXPERIMENTS_FUNGAL_DIFFUSION_HPP
+#define SRC_EXPERIMENTS_FUNGAL_DIFFUSION_HPP
+
+// TODO: Implement src/experiments/fungal_diffusion.hpp.
+
+#endif  // SRC_EXPERIMENTS_FUNGAL_DIFFUSION_HPP

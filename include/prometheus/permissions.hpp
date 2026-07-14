@@ -1,0 +1,6 @@
+#ifndef INCLUDE_PROMETHEUS_PERMISSIONS_HPP
+#define INCLUDE_PROMETHEUS_PERMISSIONS_HPP
+
+// TODO: Implement include/prometheus/permissions.hpp.
+
+#endif  // INCLUDE_PROMETHEUS_PERMISSIONS_HPP

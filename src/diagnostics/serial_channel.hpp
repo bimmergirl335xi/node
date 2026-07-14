@@ -1,0 +1,6 @@
+#ifndef SRC_DIAGNOSTICS_SERIAL_CHANNEL_HPP
+#define SRC_DIAGNOSTICS_SERIAL_CHANNEL_HPP
+
+// TODO: Implement src/diagnostics/serial_channel.hpp.
+
+#endif  // SRC_DIAGNOSTICS_SERIAL_CHANNEL_HPP

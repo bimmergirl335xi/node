@@ -1,0 +1,6 @@
+#ifndef SRC_MESSAGING_UNIX_SOCKET_CHANNEL_HPP
+#define SRC_MESSAGING_UNIX_SOCKET_CHANNEL_HPP
+
+// TODO: Implement src/messaging/unix_socket_channel.hpp.
+
+#endif  // SRC_MESSAGING_UNIX_SOCKET_CHANNEL_HPP

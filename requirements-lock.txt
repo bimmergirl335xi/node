@@ -1,0 +1,2 @@
+# Offline, pinned Python dependencies for Prometheus Node.
+# Keep this file deterministic and generated from the approved wheelhouse.

@@ -1,0 +1,6 @@
+#ifndef SRC_SERVICES_ROBOT_INGRESS_PI_CONNECTION_HPP
+#define SRC_SERVICES_ROBOT_INGRESS_PI_CONNECTION_HPP
+
+// TODO: Implement src/services/robot_ingress/pi_connection.hpp.
+
+#endif  // SRC_SERVICES_ROBOT_INGRESS_PI_CONNECTION_HPP

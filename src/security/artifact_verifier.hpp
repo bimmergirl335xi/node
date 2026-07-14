@@ -1,0 +1,6 @@
+#ifndef SRC_SECURITY_ARTIFACT_VERIFIER_HPP
+#define SRC_SECURITY_ARTIFACT_VERIFIER_HPP
+
+// TODO: Implement src/security/artifact_verifier.hpp.
+
+#endif  // SRC_SECURITY_ARTIFACT_VERIFIER_HPP

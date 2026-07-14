@@ -1,0 +1,6 @@
+#ifndef SRC_MESSAGING_SHARED_MEMORY_CHANNEL_HPP
+#define SRC_MESSAGING_SHARED_MEMORY_CHANNEL_HPP
+
+// TODO: Implement src/messaging/shared_memory_channel.hpp.
+
+#endif  // SRC_MESSAGING_SHARED_MEMORY_CHANNEL_HPP

@@ -1,0 +1,6 @@
+#ifndef SRC_EXPERIMENTS_NEURAL_MIRROR_LEGACY_HPP
+#define SRC_EXPERIMENTS_NEURAL_MIRROR_LEGACY_HPP
+
+// TODO: Implement src/experiments/neural_mirror_legacy.hpp.
+
+#endif  // SRC_EXPERIMENTS_NEURAL_MIRROR_LEGACY_HPP

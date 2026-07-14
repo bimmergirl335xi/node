@@ -1,0 +1,35 @@
+profile: nvidia_kepler
+status: legacy_supported
+backend: cuda
+release_family: cuda_kepler
+
+toolchain:
+  recommended_cuda: "11.4"
+  cuda_architectures:
+    - 35
+  separate_build_required: true
+
+device_examples:
+  - Quadro K6000
+  - Tesla K20
+  - Tesla K40
+
+capabilities:
+  fp32: true
+  fp64: true
+  int32: true
+  int64: true
+  tensor_cores: false
+
+scheduling:
+  benchmark_required: true
+  candidate_roles:
+    - fp64_dense
+    - fp64_reduction
+    - deterministic_batch_compute
+    - integer_experiments
+
+notes:
+  - Do not build this profile with CUDA 12 or newer.
+  - Arbitrary-precision integers require separate multi-limb kernels.
+  - Keep the Kepler runtime isolated from modern CUDA release bundles.

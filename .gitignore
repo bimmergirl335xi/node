@@ -1,0 +1,77 @@
+# CMake and native build trees
+/build/
+/build-*/
+/test_build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+Testing/
+compile_commands.json
+
+# Compiled native and CUDA outputs
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.bin
+*.cubin
+*.fatbin
+*.ptx
+*.d
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Runtime state and locally provisioned assets
+/data/
+/logs/
+/downloads/
+/runtime/wheelhouse/
+/models/**
+!/models/README.md
+*.onnx
+*.engine
+*.plan
+
+# Generated reports, archives, and temporary migration artifacts
+/*.csv
+/*.patch
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Editor and operating-system metadata
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

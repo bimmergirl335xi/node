@@ -1,0 +1,31 @@
+profile: xeon_phi_knights_landing
+status: experimental_legacy
+backend: cpu_vector
+release_family: phi_knl
+
+execution_model:
+  type: native_x86_node
+  native_node_runtime: true
+
+capabilities:
+  many_core: true
+  avx512f: probe
+  avx512cd: probe
+  avx512er: probe
+  avx512pf: probe
+  high_bandwidth_memory: probe
+  fp64: true
+
+scheduling:
+  benchmark_required: true
+  candidate_roles:
+    - vectorized_fp64
+    - large_batch_cpu
+    - sparse_linear_algebra
+    - graph_processing
+    - offline_training_support
+
+notes:
+  - Confirm whether the hardware is Knights Landing or Knights Mill.
+  - Build a dedicated vector profile from detected CPUID flags.
+  - Do not assume the AVX-512 subsets match a modern Xeon CPU.

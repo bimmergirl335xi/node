@@ -1,0 +1,6 @@
+#ifndef SRC_SERVICES_GIGA_TELEMETRY_GIGA_LINK_STATE_HPP
+#define SRC_SERVICES_GIGA_TELEMETRY_GIGA_LINK_STATE_HPP
+
+// TODO: Implement src/services/giga_telemetry/giga_link_state.hpp.
+
+#endif  // SRC_SERVICES_GIGA_TELEMETRY_GIGA_LINK_STATE_HPP

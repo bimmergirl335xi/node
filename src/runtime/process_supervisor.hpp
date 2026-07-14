@@ -1,0 +1,6 @@
+#ifndef SRC_RUNTIME_PROCESS_SUPERVISOR_HPP
+#define SRC_RUNTIME_PROCESS_SUPERVISOR_HPP
+
+// TODO: Implement src/runtime/process_supervisor.hpp.
+
+#endif  // SRC_RUNTIME_PROCESS_SUPERVISOR_HPP

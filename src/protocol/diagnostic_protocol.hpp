@@ -1,0 +1,6 @@
+#ifndef SRC_PROTOCOL_DIAGNOSTIC_PROTOCOL_HPP
+#define SRC_PROTOCOL_DIAGNOSTIC_PROTOCOL_HPP
+
+// TODO: Implement src/protocol/diagnostic_protocol.hpp.
+
+#endif  // SRC_PROTOCOL_DIAGNOSTIC_PROTOCOL_HPP
