@@ -1,0 +1,6 @@
+#ifndef SRC_SECURITY_REPLAY_PROTECTION_HPP
+#define SRC_SECURITY_REPLAY_PROTECTION_HPP
+
+// TODO: Implement src/security/replay_protection.hpp.
+
+#endif  // SRC_SECURITY_REPLAY_PROTECTION_HPP

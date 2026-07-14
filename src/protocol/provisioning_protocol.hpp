@@ -1,0 +1,6 @@
+#ifndef SRC_PROTOCOL_PROVISIONING_PROTOCOL_HPP
+#define SRC_PROTOCOL_PROVISIONING_PROTOCOL_HPP
+
+// TODO: Implement src/protocol/provisioning_protocol.hpp.
+
+#endif  // SRC_PROTOCOL_PROVISIONING_PROTOCOL_HPP

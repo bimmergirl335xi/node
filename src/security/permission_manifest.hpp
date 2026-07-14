@@ -1,0 +1,6 @@
+#ifndef SRC_SECURITY_PERMISSION_MANIFEST_HPP
+#define SRC_SECURITY_PERMISSION_MANIFEST_HPP
+
+// TODO: Implement src/security/permission_manifest.hpp.
+
+#endif  // SRC_SECURITY_PERMISSION_MANIFEST_HPP

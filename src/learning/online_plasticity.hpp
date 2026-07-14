@@ -1,0 +1,6 @@
+#ifndef SRC_LEARNING_ONLINE_PLASTICITY_HPP
+#define SRC_LEARNING_ONLINE_PLASTICITY_HPP
+
+// TODO: Implement src/learning/online_plasticity.hpp.
+
+#endif  // SRC_LEARNING_ONLINE_PLASTICITY_HPP

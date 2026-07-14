@@ -1,0 +1,34 @@
+profile: xeon_phi_knights_corner
+status: experimental_legacy
+backend: phi_knights_corner
+release_family: phi_knc
+
+detection:
+  expected:
+    - PCIe Xeon Phi or MIC device
+    - /sys/class/mic entries
+    - micinfo command when MPSS is installed
+
+execution_model:
+  type: coprocessor_service
+  transport: host_to_phi
+  native_node_runtime: false
+
+capabilities:
+  many_core: true
+  wide_vector: true
+  fp64: true
+  independent_memory: true
+
+scheduling:
+  benchmark_required: true
+  candidate_roles:
+    - large_batch_fp64
+    - sparse_linear_algebra
+    - memory_consolidation
+    - offline_replay_processing
+
+notes:
+  - Exact model and installed MPSS/compiler stack must be recorded.
+  - Do not treat Knights Corner as ordinary AVX-512.
+  - The host node should expose each card as a compute service.

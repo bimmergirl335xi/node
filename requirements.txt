@@ -1,0 +1,6 @@
+# Prometheus Node Python runtime dependencies.
+#
+# Phase 6 is implemented in C++17/CUDA and introduces no Python packages.
+# Keep direct Python dependencies in this file as they are added. Generate and
+# validate pinned transitive versions in requirements-lock.txt; do not place
+# NVIDIA drivers, CUDA toolkits, system libraries, or firmware in pip manifests.

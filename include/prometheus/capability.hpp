@@ -1,0 +1,6 @@
+#ifndef INCLUDE_PROMETHEUS_CAPABILITY_HPP
+#define INCLUDE_PROMETHEUS_CAPABILITY_HPP
+
+// TODO: Implement include/prometheus/capability.hpp.
+
+#endif  // INCLUDE_PROMETHEUS_CAPABILITY_HPP

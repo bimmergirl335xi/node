@@ -1,0 +1,6 @@
+#ifndef SRC_PROVISIONING_HARDWARE_PROBE_HPP
+#define SRC_PROVISIONING_HARDWARE_PROBE_HPP
+
+// TODO: Implement src/provisioning/hardware_probe.hpp.
+
+#endif  // SRC_PROVISIONING_HARDWARE_PROBE_HPP

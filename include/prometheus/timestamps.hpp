@@ -1,0 +1,6 @@
+#ifndef INCLUDE_PROMETHEUS_TIMESTAMPS_HPP
+#define INCLUDE_PROMETHEUS_TIMESTAMPS_HPP
+
+// TODO: Implement include/prometheus/timestamps.hpp.
+
+#endif  // INCLUDE_PROMETHEUS_TIMESTAMPS_HPP

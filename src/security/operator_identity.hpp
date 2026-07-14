@@ -1,0 +1,6 @@
+#ifndef SRC_SECURITY_OPERATOR_IDENTITY_HPP
+#define SRC_SECURITY_OPERATOR_IDENTITY_HPP
+
+// TODO: Implement src/security/operator_identity.hpp.
+
+#endif  // SRC_SECURITY_OPERATOR_IDENTITY_HPP

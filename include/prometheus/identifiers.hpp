@@ -1,0 +1,6 @@
+#ifndef INCLUDE_PROMETHEUS_IDENTIFIERS_HPP
+#define INCLUDE_PROMETHEUS_IDENTIFIERS_HPP
+
+// TODO: Implement include/prometheus/identifiers.hpp.
+
+#endif  // INCLUDE_PROMETHEUS_IDENTIFIERS_HPP

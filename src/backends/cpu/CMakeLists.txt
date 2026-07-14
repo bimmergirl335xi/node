@@ -16,6 +16,25 @@ target_compile_features(prometheus_cpu_foundation
         cxx_std_17
 )
 
+add_library(prometheus_cpu_thread_pool STATIC
+    cpu_thread_pool.cpp
+)
+
+target_include_directories(prometheus_cpu_thread_pool
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+)
+
+target_link_libraries(prometheus_cpu_thread_pool
+    PUBLIC
+        Threads::Threads
+)
+
+target_compile_features(prometheus_cpu_thread_pool
+    PUBLIC
+        cxx_std_17
+)
+
 add_library(prometheus_cpu_backend STATIC
     cpu_backend.cpp
 )

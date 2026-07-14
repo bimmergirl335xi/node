@@ -1,0 +1,6 @@
+#ifndef SRC_LEARNING_WEIGHT_CONSOLIDATION_HPP
+#define SRC_LEARNING_WEIGHT_CONSOLIDATION_HPP
+
+// TODO: Implement src/learning/weight_consolidation.hpp.
+
+#endif  // SRC_LEARNING_WEIGHT_CONSOLIDATION_HPP

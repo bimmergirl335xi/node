@@ -1,0 +1,6 @@
+#ifndef SRC_PROVISIONING_RELEASE_MANIFEST_HPP
+#define SRC_PROVISIONING_RELEASE_MANIFEST_HPP
+
+// TODO: Implement src/provisioning/release_manifest.hpp.
+
+#endif  // SRC_PROVISIONING_RELEASE_MANIFEST_HPP
