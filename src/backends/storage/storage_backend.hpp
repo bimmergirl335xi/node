@@ -1,0 +1,6 @@
+#ifndef SRC_BACKENDS_STORAGE_STORAGE_BACKEND_HPP
+#define SRC_BACKENDS_STORAGE_STORAGE_BACKEND_HPP
+
+// TODO: Implement src/backends/storage/storage_backend.hpp.
+
+#endif  // SRC_BACKENDS_STORAGE_STORAGE_BACKEND_HPP
