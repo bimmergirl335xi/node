@@ -132,6 +132,26 @@ add_test(
 )
 
 
+add_executable(test_cpu_simd_dispatch
+    test_cpu_simd_dispatch.cpp
+)
+
+target_link_libraries(test_cpu_simd_dispatch
+    PRIVATE
+        prometheus_cpu_foundation
+)
+
+target_compile_features(test_cpu_simd_dispatch
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_cpu_simd_dispatch
+    COMMAND test_cpu_simd_dispatch
+)
+
+
 add_executable(test_arm_capabilities
     test_arm_capabilities.cpp
 )
