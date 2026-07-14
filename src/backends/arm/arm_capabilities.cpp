@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "arm_linux_auxv.hpp"
+
 namespace prometheus::backends::arm {
 namespace {
 
@@ -24,15 +26,12 @@ void add_issue(
     switch (architecture) {
         case cpu::CpuArchitectureFamily::aarch64:
             return ArmExecutionState::aarch64;
-
         case cpu::CpuArchitectureFamily::armv7:
             return ArmExecutionState::aarch32;
-
         case cpu::CpuArchitectureFamily::x86_64:
         case cpu::CpuArchitectureFamily::riscv64:
         case cpu::CpuArchitectureFamily::ppc64le:
             return ArmExecutionState::not_arm;
-
         case cpu::CpuArchitectureFamily::unknown:
             return ArmExecutionState::unknown;
     }
@@ -86,10 +85,6 @@ void copy_generic_cpu_coverage(
 
     arm_isa.floating_point = cpu_isa.fp32;
     arm_isa.advanced_simd = cpu_isa.neon;
-
-    // Phase A1 initially retains the generic CPU layer's combined FP16
-    // observation for both fields. The Linux auxiliary-vector provider will
-    // separate scalar FP16 from vector FP16 in the next implementation pass.
     arm_isa.fp16_scalar = cpu_isa.fp16;
     arm_isa.fp16_vector = cpu_isa.fp16;
     arm_isa.bfloat16 = cpu_isa.bfloat16;
@@ -184,10 +179,34 @@ ArmCapabilityQueryResult query_arm_capabilities(
     }
 
     copy_generic_cpu_coverage(cpu_snapshot.isa, isa);
+
+    const ArmLinuxAuxvObservation auxv =
+        query_linux_arm_auxv_observation(isa.execution_state);
+    const bool auxv_applied = apply_linux_arm_auxv_observation(
+        auxv,
+        snapshot.target_logical_processor_count,
+        isa);
+
+    if (auxv_applied) {
+        isa.source = ArmCapabilitySource::combined;
+    } else if (!auxv.provider_available) {
+        add_issue(
+            snapshot,
+            ArmCapabilityIssueCode::auxiliary_vector_unavailable,
+            -1,
+            false,
+            "Linux ARM auxiliary-vector provider is unavailable on this build");
+    } else {
+        add_issue(
+            snapshot,
+            ArmCapabilityIssueCode::auxiliary_vector_query_failed,
+            -1,
+            false,
+            "Linux ARM auxiliary-vector provider returned no usable capability record");
+    }
+
     isa.common_profile = select_common_profile(isa);
 
-    // Processor implementer, part, variant, revision, Linux auxiliary-vector
-    // extensions, and SVE vector length are intentionally not guessed here.
     add_issue(
         snapshot,
         ArmCapabilityIssueCode::identity_unavailable,
@@ -195,25 +214,20 @@ ArmCapabilityQueryResult query_arm_capabilities(
         false,
         "ARM processor identity discovery is not implemented in this pass");
 
-    add_issue(
-        snapshot,
-        ArmCapabilityIssueCode::auxiliary_vector_unavailable,
-        -1,
-        false,
-        "Linux auxiliary-vector ARM discovery is not implemented in this pass");
-
-    if (isa.sve.any == cpu::CpuSupportState::supported) {
+    if (isa.sve.any == cpu::CpuSupportState::supported &&
+        !isa.sve_vector_length_observed) {
         add_issue(
             snapshot,
             ArmCapabilityIssueCode::sve_vector_length_unavailable,
             -1,
             false,
-            "SVE is reported but its runtime vector length is not yet observed");
+            "SVE is reported but its runtime vector length is unavailable");
     }
 
     result.status.code = ArmCapabilityQueryCode::partial_success;
-    result.status.message =
-        "ARM capabilities were conservatively derived from the generic CPU snapshot";
+    result.status.message = auxv_applied
+        ? "ARM capabilities combine the generic CPU snapshot with Linux auxiliary-vector observations"
+        : "ARM capabilities were conservatively derived from the generic CPU snapshot";
     return result;
 }
 
@@ -290,6 +304,8 @@ const char* to_string(ArmCapabilityIssueCode value) noexcept {
             return "identity_unavailable";
         case ArmCapabilityIssueCode::auxiliary_vector_unavailable:
             return "auxiliary_vector_unavailable";
+        case ArmCapabilityIssueCode::auxiliary_vector_query_failed:
+            return "auxiliary_vector_query_failed";
         case ArmCapabilityIssueCode::processor_record_missing:
             return "processor_record_missing";
         case ArmCapabilityIssueCode::feature_record_missing:
