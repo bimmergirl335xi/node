@@ -21,7 +21,7 @@ Lower-numbered specifications carry broader architectural authority. Later speci
 | [ACS-0000](ACS-0000-charter.md) | Adaptive Connection Substrate Charter | Draft |
 | [ACS-0001](ACS-0001-core-principles.md) | Core Principles and Invariants | Draft |
 | [ACS-0002](ACS-0002-relationship-classes.md) | Relationship Classes | Draft |
-| ACS-0003 | Signal Taxonomy | Planned |
+| [ACS-0003](ACS-0003-signal-taxonomy.md) | Signal Taxonomy | Draft |
 | ACS-0004 | Endpoints and Ports | Planned |
 | ACS-0005 | Connection Lifecycle | Planned |
 | ACS-0006 | Admission and Budgets | Planned |
