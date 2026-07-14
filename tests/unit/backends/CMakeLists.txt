@@ -170,3 +170,30 @@ add_test(
     NAME prometheus_arm_linux_auxv
     COMMAND test_arm_linux_auxv
 )
+
+
+if(NOT TARGET prometheus_cpu_thread_pool)
+    message(
+        FATAL_ERROR
+        "prometheus_cpu_thread_pool target was not created before backend tests"
+    )
+endif()
+
+add_executable(test_cpu_thread_pool
+    test_cpu_thread_pool.cpp
+)
+
+target_link_libraries(test_cpu_thread_pool
+    PRIVATE
+        prometheus_cpu_thread_pool
+)
+
+target_compile_features(test_cpu_thread_pool
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_cpu_thread_pool
+    COMMAND test_cpu_thread_pool
+)
