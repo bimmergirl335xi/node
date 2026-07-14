@@ -125,6 +125,7 @@ enum class ArmCapabilityIssueCode : std::uint8_t {
     execution_state_unknown,
     identity_unavailable,
     auxiliary_vector_unavailable,
+    auxiliary_vector_query_failed,
     processor_record_missing,
     feature_record_missing,
     sve_vector_length_unavailable,
