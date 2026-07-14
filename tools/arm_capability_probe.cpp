@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string_view>
+#include <vector>
 
 #include "arm_capabilities.hpp"
 #include "arm_processor_identity.hpp"
