@@ -1,6 +1,7 @@
 add_library(prometheus_arm_capabilities STATIC
     arm_capabilities.cpp
     arm_linux_auxv.cpp
+    arm_processor_identity.cpp
 )
 
 target_include_directories(prometheus_arm_capabilities
