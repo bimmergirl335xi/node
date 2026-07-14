@@ -4,6 +4,7 @@ add_library(prometheus_cpu_foundation STATIC
     cpu_capabilities.cpp
     cpu_health.cpp
     cpu_capacity.cpp
+    simd_dispatch.cpp
 )
 
 target_include_directories(prometheus_cpu_foundation
