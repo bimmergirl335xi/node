@@ -5,7 +5,7 @@
 | Specification | ACS-0001 |
 | Title | Core Principles and Invariants |
 | Status | Draft |
-| Version | 0.1 |
+| Version | 0.2 |
 | Classification | Architecture Specification |
 | Authors | Project Prometheus |
 | Last updated | 2026-07-14 |
@@ -21,7 +21,7 @@
 
 This specification defines mandatory architectural properties of the Adaptive Connection Substrate.
 
-It does not prescribe data structures, programming languages, network protocols, cryptographic libraries, operating systems, or transport implementations unless explicitly stated.
+It does not prescribe data structures, programming languages, network protocols, cryptographic libraries, operating systems, bootloaders, kernels, installers, or transport implementations unless explicitly stated.
 
 Later ACS specifications may refine these principles, but they must not contradict them without deliberately revising or superseding this specification.
 
@@ -29,7 +29,7 @@ Later ACS specifications may refine these principles, but they must not contradi
 
 ACS-0001 establishes the core invariants that every Adaptive Connection Substrate implementation must preserve.
 
-These invariants constrain how relationships, connections, transports, signals, resources, identity, trust, and security may be represented and operated.
+These invariants constrain how relationships, connections, transports, signals, resources, identity, trust, security, production activation, and controlled propagation may be represented and operated.
 
 They exist to prevent implementation details from gradually redefining the architecture of Prometheus.
 
@@ -46,9 +46,11 @@ These invariants apply to:
 - adaptive connection behavior;
 - connection resource use;
 - connection identity and lifecycle;
-- security and trust boundaries.
+- security and trust boundaries;
+- production substrate verification and activation;
+- installation, enrollment, and controlled propagation.
 
-They apply regardless of hardware architecture, operating system, communication medium, or implementation language.
+They apply regardless of hardware architecture, operating system, communication medium, boot environment, or implementation language.
 
 ## 3. Normative language
 
@@ -402,6 +404,110 @@ Least-privilege discovery, staged admission, protected capability negotiation, a
 
 Sending sensitive data first and attempting to establish trust afterward.
 
+### 4.4 Boot, activation, and propagation
+
+#### Invariant 19 — Production activation requires a verified substrate
+
+Prometheus shall not enter normal production operation on a physical or virtual substrate until the identity, integrity, compatibility, and security state of the selected operating environment have been established to the degree required by policy.
+
+The verified environment shall include all components whose compatibility materially affects safe execution, including the applicable boot environment, production kernel or equivalent runtime foundation, system profile, drivers, firmware, userspace interfaces, security policy, and required recovery path.
+
+Unknown, conflicting, incomplete, unsupported, or unverifiable substrate state shall remain explicit.
+
+Such state must result in recovery operation, restricted operation, operator review, or refusal of activation according to policy. It must not be silently treated as compatible, healthy, trusted, or production-ready.
+
+A production environment shall not silently replace, weaken, or assume the authority of the independent recovery or verification boundary responsible for validating it.
+
+**Rationale**
+
+Prometheus may operate across hardware requiring different kernels, drivers, firmware, runtimes, and compatibility constraints.
+
+Individually valid components may still form an unsafe or unusable combination. Production activation must therefore validate a complete operating profile rather than assuming that separately installed components are mutually compatible.
+
+A node that cannot establish the condition of its substrate must not pretend that uncertainty is safety.
+
+**This enables**
+
+- signed and validated system profiles;
+- conservative hardware-profile selection;
+- multiple supported kernels or runtime foundations;
+- known-good rollback;
+- restricted operation on partially supported hardware;
+- offline recovery;
+- auditable boot decisions;
+- future operating systems and virtualized execution environments;
+- explicit degraded state when verification is incomplete.
+
+**This forbids**
+
+- entering normal production operation from an unverified environment;
+- selecting drivers or kernels through unsupported guesswork;
+- silently interpreting unknown hardware as compatible hardware;
+- combining profile components that have not been validated together;
+- treating successful boot as proof of correct configuration;
+- allowing the production runtime to silently rewrite its independent recovery root;
+- reporting an unverifiable node as healthy or fully admitted.
+
+---
+
+#### Invariant 20 — Propagation is explicit, bounded, authorized, and reversible
+
+Prometheus shall not install, replicate, enroll, activate, or materially extend itself onto new physical or virtual substrate without explicit authorization appropriate to the target and operation.
+
+Every propagation action shall be bounded by:
+
+- verified target identity;
+- verified target capability and compatibility;
+- authenticated and integrity-protected installation artifacts;
+- an explicitly selected system profile;
+- defined scope;
+- defined resource limits;
+- defined trust and admission state;
+- auditable provenance;
+- explicit success and failure reporting;
+- a safe interruption or recovery path;
+- rollback or removal behavior where technically possible.
+
+Propagation shall not automatically grant the new substrate full trust, unrestricted mesh membership, privileged capability, or authority over existing participants.
+
+A successfully installed node remains subject to discovery, verification, admission, security, health, and immune evaluation before receiving broader responsibilities.
+
+No cognitive signal, adaptive process, immune suspicion, relationship class, or local convenience shall independently authorize propagation.
+
+**Rationale**
+
+The ability to extend Prometheus onto additional hardware is necessary for growth, repair, recovery, and deployment.
+
+That same ability could cause uncontrolled replication, accidental installation, trust expansion, incompatible deployment, resource exhaustion, or compromise if treated as an ordinary runtime behavior.
+
+Propagation must therefore be a deliberate lifecycle operation rather than an emergent side effect of connectivity, discovery, or cognition.
+
+**This enables**
+
+- self-installing deployment media;
+- controlled fleet provisioning;
+- signed offline installation;
+- hardware-specific profile selection;
+- staged node enrollment;
+- replacement of damaged nodes;
+- recovery-driven reprovisioning;
+- explicit operator-approved expansion;
+- future automated deployment under tightly bounded policy;
+- safe removal or rollback after failed installation.
+
+**This forbids**
+
+- uncontrolled self-replication;
+- installation triggered merely by discovering a machine;
+- silent enrollment of reachable hardware;
+- propagation through ordinary cognitive influence;
+- granting full trust merely because installation completed;
+- spreading unsigned or unverified system profiles;
+- using one node's authorization as unlimited permission to install elsewhere;
+- hiding partial, interrupted, or failed propagation;
+- propagation that cannot be attributed to an authorized source and policy;
+- expansion that bypasses admission, security, resource, or immune boundaries.
+
 ## 5. Relationship between the invariants
 
 The invariants are mutually reinforcing.
@@ -418,17 +524,21 @@ Authority separation prevents communication objects from silently becoming infra
 
 Security invariants protect remote continuity without coupling logical identity to individual credentials or sessions.
 
+Verified production activation prevents uncertain or incompatible substrate state from being mistaken for safe operation.
+
+Controlled propagation permits deliberate growth without converting connectivity, cognition, or installation success into unrestricted trust or replication authority.
+
 No invariant should be interpreted in isolation when doing so would weaken another invariant.
 
 ## 6. Design rationale
 
 Prometheus is intended to operate across heterogeneous, failure-prone, and evolving hardware.
 
-Without foundational invariants, implementation conveniences would gradually determine the organism's architecture. Sockets could become identities. Threads could become connections. Discovery could become trust. Adaptive behavior could become unbounded. Security credentials could become inseparable from relationships.
+Without foundational invariants, implementation conveniences would gradually determine the organism's architecture. Sockets could become identities. Threads could become connections. Discovery could become trust. Adaptive behavior could become unbounded. Security credentials could become inseparable from relationships. Successful boot could be mistaken for verified compatibility. Installation capability could become uncontrolled propagation.
 
 ACS-0001 prevents those accidental transformations.
 
-It establishes a constitutional boundary within which later specifications may define relationship classes, signals, endpoints, ports, lifecycles, admission policies, budgets, security mechanisms, and immune integration.
+It establishes a constitutional boundary within which later specifications may define relationship classes, signals, endpoints, ports, lifecycles, admission policies, budgets, security mechanisms, immune integration, system profiles, recovery environments, production activation, and controlled provisioning.
 
 ## 7. Architectural consequences
 
@@ -445,7 +555,12 @@ Conforming implementations will require:
 - protected key custody;
 - multiplexing without loss of logical isolation;
 - compartmentalized session security;
-- continuity across transport and credential changes.
+- continuity across transport and credential changes;
+- verified and internally compatible production system profiles;
+- explicit recovery, restricted-operation, and activation outcomes;
+- bounded and authorized propagation;
+- auditable installation and enrollment;
+- safe interruption, rollback, removal, or recovery behavior where technically possible.
 
 These consequences are intentional.
 
@@ -462,9 +577,13 @@ This specification does not yet determine:
 - how secure sessions are multiplexed;
 - which system owns node quarantine and recovery;
 - how adaptive relationship promotion and decay operate;
-- how violations are reported to immune or health systems.
+- how violations are reported to immune or health systems;
+- which evidence is required to validate a complete production system profile;
+- which authority may approve installation, enrollment, activation, rollback, or removal;
+- when unknown hardware may enter a restricted generic operating mode;
+- how propagation authorization is delegated without becoming reusable unlimited authority.
 
-These questions belong to later ACS specifications.
+These questions belong to later ACS and operating-environment specifications.
 
 ## 9. Future evolution
 
@@ -485,6 +604,14 @@ Any proposed revision must state:
 > **The health of the organism is always more important than the performance of any individual component.**
 
 ## Revision history
+
+### Version 0.2 — 2026-07-14
+
+- Expanded ACS-0001 from eighteen to twenty foundational invariants.
+- Added verified-substrate requirements for normal production activation.
+- Added explicit, bounded, authorized, and reversible propagation requirements.
+- Established that successful boot or installation does not prove compatibility, trust, health, or admission.
+- Extended scope and consequences to system profiles, recovery boundaries, installation, enrollment, and controlled growth.
 
 ### Version 0.1 — 2026-07-14
 
