@@ -130,3 +130,43 @@ add_test(
     NAME prometheus_cpu_health_capacity
     COMMAND test_cpu_health_capacity
 )
+
+
+add_executable(test_arm_capabilities
+    test_arm_capabilities.cpp
+)
+
+target_link_libraries(test_arm_capabilities
+    PRIVATE
+        prometheus_arm_capabilities
+)
+
+target_compile_features(test_arm_capabilities
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_arm_capabilities
+    COMMAND test_arm_capabilities
+)
+
+
+add_executable(test_arm_linux_auxv
+    test_arm_linux_auxv.cpp
+)
+
+target_link_libraries(test_arm_linux_auxv
+    PRIVATE
+        prometheus_arm_capabilities
+)
+
+target_compile_features(test_arm_linux_auxv
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_arm_linux_auxv
+    COMMAND test_arm_linux_auxv
+)
