@@ -170,3 +170,23 @@ add_test(
     NAME prometheus_arm_linux_auxv
     COMMAND test_arm_linux_auxv
 )
+
+
+add_executable(test_arm_processor_identity
+    test_arm_processor_identity.cpp
+)
+
+target_link_libraries(test_arm_processor_identity
+    PRIVATE
+        prometheus_arm_capabilities
+)
+
+target_compile_features(test_arm_processor_identity
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_arm_processor_identity
+    COMMAND test_arm_processor_identity
+)
