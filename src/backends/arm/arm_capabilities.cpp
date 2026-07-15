@@ -49,12 +49,14 @@ void add_issue(
         return ArmExecutionProfile::unknown;
     }
 
-    if (isa.sve2.safe_for_all_targets()) {
-        return ArmExecutionProfile::sve2;
-    }
+    if (isa.execution_state == ArmExecutionState::aarch64) {
+        if (isa.sve2.safe_for_all_targets()) {
+            return ArmExecutionProfile::sve2;
+        }
 
-    if (isa.sve.safe_for_all_targets()) {
-        return ArmExecutionProfile::sve;
+        if (isa.sve.safe_for_all_targets()) {
+            return ArmExecutionProfile::sve;
+        }
     }
 
     if (isa.i8mm.safe_for_all_targets()) {
@@ -206,13 +208,6 @@ ArmCapabilityQueryResult query_arm_capabilities(
     }
 
     isa.common_profile = select_common_profile(isa);
-
-    add_issue(
-        snapshot,
-        ArmCapabilityIssueCode::identity_unavailable,
-        -1,
-        false,
-        "ARM processor identity discovery is not implemented in this pass");
 
     if (isa.sve.any == cpu::CpuSupportState::supported &&
         !isa.sve_vector_length_observed) {

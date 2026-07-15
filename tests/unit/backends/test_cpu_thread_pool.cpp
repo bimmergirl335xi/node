@@ -5,9 +5,11 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace cpu = prometheus::backends::cpu;
 
@@ -103,6 +105,12 @@ int main() {
     require(
         cancellable.handle.request_cancel(),
         "queued task cancellation request must succeed");
+    const cpu::CpuTaskSubmissionResult replacement = pool.submit(
+        [&]() { ++executed; },
+        cpu::CpuTaskPriority::high);
+    require(
+        replacement.accepted(),
+        "cancelled queued work must release capacity on submission");
 
     {
         std::lock_guard<std::mutex> lock(gate_mutex);
@@ -113,6 +121,7 @@ int main() {
     blocker.handle.wait();
     queued.handle.wait();
     cancellable.handle.wait();
+    replacement.handle.wait();
 
     require(
         blocker.handle.result().state == cpu::CpuTaskState::completed,
@@ -124,8 +133,12 @@ int main() {
         cancellable.handle.result().state ==
             cpu::CpuTaskState::cancelled,
         "cancel-requested queued task must be cancelled");
-    require(executed.load() == 2,
-            "cancelled task must not execute");
+    require(
+        replacement.handle.result().state ==
+            cpu::CpuTaskState::completed,
+        "replacement task must complete");
+    require(executed.load() == 3,
+            "cancelled task must not execute and replacement must run");
 
     const cpu::CpuTaskSubmissionResult throwing = pool.submit(
         []() { throw std::runtime_error("expected failure"); });
@@ -148,7 +161,7 @@ int main() {
     require(
         recovery.handle.result().succeeded(),
         "post-exception task must complete");
-    require(executed.load() == 3,
+    require(executed.load() == 4,
             "post-exception task must execute");
 
     std::atomic<bool> worker_stop_rejected{false};
@@ -184,11 +197,11 @@ int main() {
             "drained pool queue must be empty");
     require(snapshot.active_task_count == 0,
             "drained pool must have no active tasks");
-    require(snapshot.accepted_task_count == 6,
+    require(snapshot.accepted_task_count == 7,
             "accepted task count must be exact");
     require(snapshot.rejected_task_count == 3,
             "rejected task count must include invalid and backpressured submissions");
-    require(snapshot.completed_task_count == 4,
+    require(snapshot.completed_task_count == 5,
             "completed task count must be exact");
     require(snapshot.failed_task_count == 1,
             "failed task count must be exact");
@@ -201,6 +214,20 @@ int main() {
         after_stop.code ==
             cpu::CpuTaskSubmissionCode::pool_not_running,
         "stopped pool must reject new work");
+
+    require(
+        pool.start().state == cpu::CpuThreadPoolState::running,
+        "a stopped pool must support an explicit restart");
+    const cpu::CpuTaskSubmissionResult after_restart =
+        pool.submit([&]() { ++executed; });
+    require(after_restart.accepted(),
+            "restarted pool must accept work");
+    after_restart.handle.wait();
+    require(after_restart.handle.result().succeeded(),
+            "restarted pool work must complete");
+    require(
+        pool.drain().state == cpu::CpuThreadPoolState::stopped,
+        "restarted pool must drain cleanly");
 
     cpu::CpuThreadPoolOptions stop_options{};
     stop_options.worker_count = 1;
@@ -271,6 +298,112 @@ int main() {
         stop_pool.status().state ==
             cpu::CpuThreadPoolState::stopped,
         "cancel-pending stop must stop pool");
+
+    cpu::CpuThreadPoolOptions fairness_options{};
+    fairness_options.worker_count = 1;
+    fairness_options.queue_capacity = 16;
+    cpu::CpuThreadPool fairness_pool{fairness_options};
+    require(
+        fairness_pool.start().state == cpu::CpuThreadPoolState::running,
+        "fairness pool must start");
+
+    std::mutex fairness_gate_mutex;
+    std::condition_variable fairness_gate_cv;
+    bool fairness_blocker_started = false;
+    bool release_fairness_blocker = false;
+    const cpu::CpuTaskSubmissionResult fairness_blocker =
+        fairness_pool.submit(
+            [&]() {
+                {
+                    std::lock_guard<std::mutex> lock(fairness_gate_mutex);
+                    fairness_blocker_started = true;
+                }
+                fairness_gate_cv.notify_all();
+                std::unique_lock<std::mutex> lock(fairness_gate_mutex);
+                fairness_gate_cv.wait(
+                    lock,
+                    [&]() { return release_fairness_blocker; });
+            },
+            cpu::CpuTaskPriority::critical);
+    require(fairness_blocker.accepted(),
+            "fairness blocker must be accepted");
+    {
+        std::unique_lock<std::mutex> lock(fairness_gate_mutex);
+        require(
+            fairness_gate_cv.wait_for(
+                lock,
+                std::chrono::seconds(2),
+                [&]() { return fairness_blocker_started; }),
+            "fairness blocker must begin");
+    }
+
+    std::atomic<int> fairness_order{0};
+    std::atomic<int> low_task_order{0};
+    const cpu::CpuTaskSubmissionResult low_task = fairness_pool.submit(
+        [&]() { low_task_order.store(++fairness_order); },
+        cpu::CpuTaskPriority::low);
+    require(low_task.accepted(), "low-priority task must be accepted");
+
+    std::vector<cpu::CpuTaskHandle> critical_handles;
+    for (int index = 0; index < 12; ++index) {
+        const cpu::CpuTaskSubmissionResult critical = fairness_pool.submit(
+            [&]() { ++fairness_order; },
+            cpu::CpuTaskPriority::critical);
+        require(critical.accepted(),
+                "critical fairness task must be accepted");
+        critical_handles.push_back(critical.handle);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(fairness_gate_mutex);
+        release_fairness_blocker = true;
+    }
+    fairness_gate_cv.notify_all();
+    low_task.handle.wait();
+    for (const cpu::CpuTaskHandle& handle : critical_handles) {
+        handle.wait();
+    }
+    require(
+        low_task_order.load() > 0 && low_task_order.load() <= 8,
+        "weighted priorities must bound low-priority starvation");
+    require(
+        fairness_pool.drain().state == cpu::CpuThreadPoolState::stopped,
+        "fairness pool must drain");
+
+    cpu::CpuThreadPoolOptions destruction_options{};
+    destruction_options.worker_count = 1;
+    destruction_options.queue_capacity = 1;
+    auto worker_owned_pool =
+        std::make_unique<cpu::CpuThreadPool>(destruction_options);
+    require(
+        worker_owned_pool->start().state ==
+            cpu::CpuThreadPoolState::running,
+        "worker-destruction pool must start");
+
+    std::mutex destruction_gate_mutex;
+    std::condition_variable destruction_gate_cv;
+    bool release_destruction = false;
+    const cpu::CpuTaskSubmissionResult destroy_from_worker =
+        worker_owned_pool->submit([&]() {
+            std::unique_lock<std::mutex> lock(destruction_gate_mutex);
+            destruction_gate_cv.wait(
+                lock,
+                [&]() { return release_destruction; });
+            lock.unlock();
+            worker_owned_pool.reset();
+        });
+    require(destroy_from_worker.accepted(),
+            "worker-origin destruction task must be accepted");
+    {
+        std::lock_guard<std::mutex> lock(destruction_gate_mutex);
+        release_destruction = true;
+    }
+    destruction_gate_cv.notify_all();
+    require(
+        destroy_from_worker.handle.wait_for(std::chrono::seconds(2)),
+        "worker-origin destruction must not terminate or deadlock");
+    require(worker_owned_pool == nullptr,
+            "worker-origin destruction must release the pool object");
 
     return EXIT_SUCCESS;
 }

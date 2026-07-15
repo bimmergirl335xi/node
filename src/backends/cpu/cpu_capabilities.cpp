@@ -267,7 +267,6 @@ void populate_common_simd_level(CpuIsaCapabilities& isa) {
             }
             break;
         case CpuArchitectureFamily::aarch64:
-        case CpuArchitectureFamily::armv7:
             if (isa.sve2.safe_for_all_targets()) {
                 isa.common_simd_level = CpuSimdLevel::sve2;
                 // SVE is vector-length agnostic. Width is resolved at runtime
@@ -277,6 +276,12 @@ void populate_common_simd_level(CpuIsaCapabilities& isa) {
                 isa.common_simd_level = CpuSimdLevel::sve;
                 isa.common_vector_width_bytes = 0;
             } else if (isa.neon.safe_for_all_targets()) {
+                isa.common_simd_level = CpuSimdLevel::neon;
+                isa.common_vector_width_bytes = 16;
+            }
+            break;
+        case CpuArchitectureFamily::armv7:
+            if (isa.neon.safe_for_all_targets()) {
                 isa.common_simd_level = CpuSimdLevel::neon;
                 isa.common_vector_width_bytes = 16;
             }

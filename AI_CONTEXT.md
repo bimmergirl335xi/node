@@ -5,7 +5,7 @@
 > Detailed phase history belongs in `docs/CURRENT_STATE.md`, architecture
 > specifications, pull requests, and Git history.
 >
-> Last reconciled: 2026-07-14.
+> Last reconciled: 2026-07-15.
 > The same context file is maintained on the active development branches.
 > Use the branch map below before assuming that branch-local code is merged.
 
@@ -227,15 +227,29 @@ Current integrated line. It contains:
 
 - the Phase 6 CUDA foundation;
 - the Phase 7.1 generic CPU foundation;
-- the first bounded CPU thread-pool integration;
+- the bounded single-group CPU thread pool and conservative SIMD selector;
+- generic ARM Linux auxiliary-vector and processor-identity discovery;
 - the first Hailo accelerator-backend slice;
 - ACS-0000 through ACS-0003;
 - ACS-0001 version 0.2 with twenty invariants.
 
-The integrated CPU thread pool provides a fixed worker count, bounded
-priority-aware queue, explicit submission backpressure, task handles, queued
-cancellation, structured counters, exception containment, and drain or
-cancel-pending shutdown.
+The integrated CPU thread pool provides a fixed worker count, bounded weighted
+priority queue, explicit submission backpressure, task handles, queued
+cancellation, structured counters, exception containment, restart after stop,
+safe worker-origin destruction, and drain or cancel-pending shutdown. It stores
+execution-group metadata but does not change affinity or orchestrate NUMA pools.
+
+The integrated SIMD selector explicitly separates scalar, x86, and ARM
+families, clamps common hardware capability to the highest compiled adapter,
+rejects inconsistent and cross-family inputs, restricts ARMv7 to NEON-family
+selection, and treats unknown SVE widths as unusable. Selection is capability
+metadata only; it does not prove that a typed executable adapter exists.
+
+ARM remains an enrichment layer for the generic CPU backend. Linux auxiliary
+vectors provide conservative feature observations, while injectable
+`/proc/cpuinfo` parsing groups observational processor signatures. Capability
+and identity providers remain separate and are composed only by the diagnostic
+probe in this slice. No second ARM backend is registered.
 
 The integrated Hailo slice currently performs conservative host and visible
 device discovery. A visible device remains degraded and unusable until HailoRT
@@ -249,7 +263,8 @@ related test wiring. It does not make ARM a separate registered CPU backend.
 
 ### `agent/phase-7-2-1-cpu-thread-pool`
 
-Draft Phase 7.2 branch targeting `agent/open-source-source-tree`. It contains:
+Integration source retained for history. Checkpoint I-001 reconciled its valid
+CPU execution and SIMD slices into `main`, including:
 
 - the bounded CPU thread-pool implementation;
 - priority-aware queueing and explicit backpressure;
@@ -259,18 +274,17 @@ Draft Phase 7.2 branch targeting `agent/open-source-source-tree`. It contains:
 - vector-width reporting with explicit unknown SVE/SVE2 width;
 - tests for pool lifecycle, concurrency, selection, and vector widths.
 
-This branch does not yet implement affinity binding, NUMA-group orchestration,
-cross-group work stealing, typed CPU kernels, neural-current scheduling, or
-production dispatch.
+The integrated slice does not implement affinity binding, NUMA-group
+orchestration, cross-group work stealing, typed CPU kernels, neural-current
+scheduling, or production dispatch.
 
-Reported branch validation includes strict-warning builds, a 50-run standalone
-thread-pool stress sequence, minimal CMake/CTest validation, and synthetic SIMD
-selection tests. Repository-level validation on `curiosity` remains required
-after integration.
+Checkpoint validation on `curiosity` passed all five focused CPU tests, 100
+repeated thread-pool runs, and the complete 17-test CTest suite.
 
 ### `agent/arm-a1-linux-auxv`
 
-Draft ARM Phase A1 branch targeting `main`. It contains:
+Integration source retained for history. Checkpoint I-001 reconciled its valid
+ARM discovery slices into `main`, including:
 
 - generic Linux ARM `AT_HWCAP` and `AT_HWCAP2` observation;
 - AArch64 and conservative AArch32 capability decoding;
@@ -281,22 +295,22 @@ Draft ARM Phase A1 branch targeting `main`. It contains:
 - explicit issue records for missing, malformed, duplicate, or incomplete
   identity data.
 
-Processor identity is observational metadata, not dispatch authority. The branch
-does not assume Raspberry Pi, cameras, Hailo, IMX500, GPUs, or other
-accelerators.
+Processor identity is observational metadata, not dispatch authority. The
+integrated slice does not assume Raspberry Pi, cameras, Hailo, IMX500, GPUs, or
+other accelerators.
 
-Reported validation includes the ARM capability and Linux auxiliary-vector
-tests plus a strict-warning standalone processor-identity test. Repository-level
-processor-identity CTest and real ARM hardware validation remain pending.
+Checkpoint validation passed all three ARM CTests and the x86 not-applicable
+probe. Real AArch32, AArch64, heterogeneous ARM, and SVE/SVE2 hardware
+validation remain pending.
 
 ## Current Work and Next Boundaries
 
 Work is proceeding on several independent tracks:
 
-1. Complete and validate Phase 7.2 CPU execution foundations before adding
-   typed CPU operation adapters.
-2. Reconcile generic ARM Phase A1 discovery with the moving main source tree
-   without duplicating the physical CPU backend.
+1. Continue Phase 7.2.1a CPU hardening before adding typed CPU operation
+   adapters, especially policy for running tasks that never return.
+2. Validate generic ARM discovery on real AArch32 and AArch64 Linux hardware,
+   including heterogeneous and SVE/SVE2 systems where available.
 3. Continue Hailo discovery toward dynamically loaded HailoRT integration,
    explicit runtime state, stable device identity, health, capacity, and model
    readiness without coupling it to generic ARM discovery.

@@ -36,6 +36,7 @@ enum class CpuTaskSubmissionCode : std::uint8_t {
     pool_not_running,
     queue_full,
     pool_stopping,
+    resource_exhausted,
 };
 
 enum class CpuThreadPoolState : std::uint8_t {
@@ -162,6 +163,8 @@ public:
     CpuThreadPool(CpuThreadPool&&) = delete;
     CpuThreadPool& operator=(CpuThreadPool&&) = delete;
 
+    // A stopped pool may be started again. Structured counters remain
+    // cumulative across restarts.
     [[nodiscard]] CpuThreadPoolStatus start();
 
     [[nodiscard]] CpuTaskSubmissionResult submit(
@@ -183,7 +186,9 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    // Workers retain the implementation while exiting so destruction from a
+    // worker task cannot invalidate state still used by that worker.
+    std::shared_ptr<Impl> impl_;
 };
 
 [[nodiscard]] const char* to_string(CpuTaskPriority value) noexcept;

@@ -801,3 +801,94 @@ tools/cpu_backend_probe.cpp
 > 7.2: bounded CPU worker pools, execution-group queues, lifecycle, backpressure,
 > and NUMA-local scheduling foundations. Do not implement reference-operation or
 > SIMD execution claims before typed adapters exist.
+
+## 2026-07-15 — Integration Checkpoint I-001: CPU Execution and ARM Discovery
+
+Checkpoint I-001 reconciled the valid implementation slices from
+`agent/phase-7-2-1-cpu-thread-pool` and `agent/arm-a1-linux-auxv` onto the
+current `main` architecture. Shared CMake and documentation files were updated
+manually; neither feature branch was merged wholesale.
+
+### CPU Execution Foundation
+
+The single execution-group CPU pool now provides a fixed worker count, bounded
+queue capacity, low/normal/high/critical priorities with bounded weighted
+service, explicit queue-full backpressure, task handles and state inspection,
+completion waits, queued cancellation, exception containment, structured
+counters, drain shutdown, and cancel-pending shutdown. Execution-group and
+logical-processor metadata remain advisory and do not change affinity.
+
+Narrow hardening in this checkpoint:
+
+- worker threads retain implementation state through exit, preventing
+  worker-origin pool destruction from invalidating live worker state or leaving
+  a joinable self-thread that terminates the process;
+- cancelled queued entries are purged before capacity is evaluated for a new
+  submission;
+- weighted priority service bounds starvation without adding work stealing or
+  a new scheduler layer;
+- allocation failures while creating task controls or growing the queue return
+  an explicit `resource_exhausted` submission result;
+- restart after a completed stop is explicitly supported, with cumulative
+  counters.
+
+The SIMD selector uses explicit scalar, x86, and ARM classification rather than
+enum ordering. It clamps common hardware capability to the caller's highest
+compiled adapter, rejects cross-family and inconsistent data, returns scalar
+for unknown levels, reports fixed widths exactly, and accepts SVE/SVE2 widths
+only from 16 through 256 bytes in 16-byte increments. ARMv7 accepts NEON but
+rejects SVE and SVE2. SIMD selection remains capability metadata and does not
+prove an executable typed operation adapter.
+
+### ARM Discovery Foundation
+
+The existing ARM capability and Linux auxiliary-vector providers were retained
+and reconciled with a separate processor-identity provider. ARM discovery
+preserves AArch32/AArch64 state, Advanced SIMD, FP16, BF16, dot-product, I8MM,
+crypto, atomics, SVE/SVE2 vocabulary, explicit unknown auxiliary-vector words,
+and runtime SVE vector-length observation when available.
+
+The injectable `/proc/cpuinfo` parser records implementer, architecture,
+variant, part, and revision observations; groups observed processor signatures;
+marks heterogeneity only when multiple complete signatures exist; and reports
+missing, malformed, duplicate, and incomplete records explicitly. It remains
+observational metadata, not durable node identity, backend registration
+authority, or instruction-dispatch authority.
+
+Capability and identity providers remain separate. The diagnostic probe is the
+current higher discovery layer and composes their results using the same target
+logical processors. This is the smallest API change and avoids turning the
+existing capability query into a semantically ambiguous full-discovery query.
+ARM continues to enrich the generic CPU backend; no second CPU backend is
+registered.
+
+### Validation
+
+Validation used `build/integration-i-001-cpu-arm`, CUDA architecture 75, tests
+enabled, benchmarks disabled, legacy vision disabled, and a serial build.
+
+- configure: passed;
+- serial complete build: passed;
+- focused CPU CTest: 5/5 passed;
+- focused ARM CTest: 3/3 passed;
+- CPU thread-pool repeat: 100/100 passed;
+- complete CTest with host GPU access: 17/17 passed;
+- x86 ARM probe: reported `unsupported_architecture` / `not_arm` and exited 0;
+- `git diff --check`: passed before review.
+
+The sandboxed full-suite attempt could not access the NVIDIA driver and failed
+only the eight CUDA-dependent tests. The same unmodified suite passed 17/17
+when rerun with host GPU access.
+
+### Remaining Limits
+
+- Real ARM Linux validation has not yet been performed. AArch32, AArch64,
+  heterogeneous processors, and SVE/SVE2 hardware remain pending.
+- Running tasks are cooperative and cannot be forcefully interrupted. Drain or
+  stop can wait indefinitely for a task that never returns; timeout and
+  escalation policy remains Phase 7.2.1a work.
+- There is no NUMA pool collection, affinity binding, or work stealing.
+- There are no typed CPU or ARM operations, kernels, or production dispatch
+  adapters.
+- The CPU pool is not attached to `CpuBackend` or a production scheduler.
+- Robot behavior remains on the legacy path and was not migrated.

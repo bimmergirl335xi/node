@@ -296,6 +296,22 @@ namespace {
             arm::ArmExecutionProfile::advanced_simd,
         "ARMv7 NEON should select the Advanced SIMD profile");
 
+    snapshot.isa.sve = make_coverage(
+        2,
+        cpu::CpuSupportState::supported,
+        cpu::CpuSupportState::supported);
+    snapshot.isa.sve2 = make_coverage(
+        2,
+        cpu::CpuSupportState::supported,
+        cpu::CpuSupportState::supported);
+
+    const arm::ArmCapabilityQueryResult inconsistent_result =
+        arm::query_arm_capabilities(snapshot);
+    passed &= expect(
+        inconsistent_result.capabilities.isa.common_profile ==
+            arm::ArmExecutionProfile::advanced_simd,
+        "ARMv7 must reject inconsistent SVE and SVE2 observations");
+
     return passed;
 }
 

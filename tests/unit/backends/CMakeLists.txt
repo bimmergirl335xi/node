@@ -172,6 +172,26 @@ add_test(
 )
 
 
+add_executable(test_arm_processor_identity
+    test_arm_processor_identity.cpp
+)
+
+target_link_libraries(test_arm_processor_identity
+    PRIVATE
+        prometheus_arm_capabilities
+)
+
+target_compile_features(test_arm_processor_identity
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_arm_processor_identity
+    COMMAND test_arm_processor_identity
+)
+
+
 if(NOT TARGET prometheus_cpu_thread_pool)
     message(
         FATAL_ERROR
@@ -196,6 +216,26 @@ target_compile_features(test_cpu_thread_pool
 add_test(
     NAME prometheus_cpu_thread_pool
     COMMAND test_cpu_thread_pool
+)
+
+
+add_executable(test_cpu_simd_dispatch
+    test_cpu_simd_dispatch.cpp
+)
+
+target_link_libraries(test_cpu_simd_dispatch
+    PRIVATE
+        prometheus_cpu_foundation
+)
+
+target_compile_features(test_cpu_simd_dispatch
+    PRIVATE
+        cxx_std_17
+)
+
+add_test(
+    NAME prometheus_cpu_simd_dispatch
+    COMMAND test_cpu_simd_dispatch
 )
 
 if(NOT TARGET prometheus_hailo_backend)

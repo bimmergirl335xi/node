@@ -189,8 +189,13 @@ prometheus_node/
 │   │   │   └── cuda_profiles.cpp
 │   │   │
 │   │   ├── arm/
+│   │   │   ├── CMakeLists.txt
 │   │   │   ├── arm_capabilities.hpp
 │   │   │   ├── arm_capabilities.cpp
+│   │   │   ├── arm_linux_auxv.hpp
+│   │   │   ├── arm_linux_auxv.cpp
+│   │   │   ├── arm_processor_identity.hpp
+│   │   │   ├── arm_processor_identity.cpp
 │   │   │   ├── neon_dispatch.hpp
 │   │   │   └── neon_dispatch.cpp
 │   │   │
@@ -524,7 +529,8 @@ prometheus_node/
 │   ├── cuda_health_probe.cu
 │   ├── cuda_device_pool_probe.cu
 │   ├── cuda_backend_registry_probe.cu
-│   └── cpu_backend_probe.cpp
+│   ├── cpu_backend_probe.cpp
+│   └── arm_capability_probe.cpp
 │
 ├── scripts/
 │   ├── configure.sh
@@ -553,6 +559,16 @@ prometheus_node/
 │   │   ├── messaging/
 │   │   ├── mesh/
 │   │   ├── backends/
+│   │   │   ├── test_cpu_foundation.cpp
+│   │   │   ├── test_cpu_backend_registry.cpp
+│   │   │   ├── test_cpu_health_capacity.cpp
+│   │   │   ├── test_cpu_thread_pool.cpp
+│   │   │   ├── test_cpu_simd_dispatch.cpp
+│   │   │   ├── test_arm_capabilities.cpp
+│   │   │   ├── test_arm_linux_auxv.cpp
+│   │   │   ├── test_arm_processor_identity.cpp
+│   │   │   ├── test_cuda_backend_registry.cu
+│   │   │   ├── test_cuda_runtime_resources.cu
 │   │   │   └── test_hailo_backend.cpp
 │   │   ├── services/
 │   │   ├── storage/
@@ -608,6 +624,8 @@ prometheus_node/
 │
 ├── docs/
 │   ├── PROJECT_TREE.md
+│   ├── handoffs/
+│   │   └── ARM_A1_CODEX_HANDOFF.md
 │   ├── architecture/
 │   │   ├── node_runtime.md
 │   │   ├── service_model.md

@@ -6,6 +6,7 @@
 #include <deque>
 #include <exception>
 #include <limits>
+#include <new>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -36,6 +37,16 @@ namespace {
 
 [[nodiscard]] std::size_t priority_index(CpuTaskPriority priority) noexcept {
     return static_cast<std::size_t>(priority);
+}
+
+void assign_message_noexcept(
+    std::string& destination,
+    const char* message) noexcept {
+    try {
+        destination = message;
+    } catch (const std::bad_alloc&) {
+        destination.clear();
+    }
 }
 
 void finish_task(
@@ -156,22 +167,66 @@ struct CpuThreadPool::Impl {
     std::uint64_t cancelled = 0;
     bool accepting = false;
     bool stop_requested = false;
+    std::size_t priority_schedule_cursor = 0;
 
     [[nodiscard]] bool queues_empty() const noexcept {
         return queued_count == 0;
     }
 
     [[nodiscard]] QueuedTask pop_next_locked() {
-        for (std::size_t index = queues.size(); index > 0; --index) {
-            auto& queue = queues[index - 1];
+        // Weighted service retains priority preference while bounding the
+        // number of selections for which any non-empty queue can be skipped.
+        static constexpr std::array<std::size_t, 15> schedule{
+            3, 3, 3, 3, 3, 3, 3, 3,
+            2, 2, 2, 2,
+            1, 1,
+            0,
+        };
+
+        for (std::size_t offset = 0; offset < schedule.size(); ++offset) {
+            const std::size_t cursor =
+                (priority_schedule_cursor + offset) % schedule.size();
+            auto& queue = queues[schedule[cursor]];
             if (!queue.empty()) {
                 QueuedTask task = std::move(queue.front());
                 queue.pop_front();
                 --queued_count;
+                priority_schedule_cursor = (cursor + 1) % schedule.size();
                 return task;
             }
         }
         return {};
+    }
+
+    void purge_cancelled_queued_locked() {
+        for (auto& queue : queues) {
+            auto iterator = queue.begin();
+            while (iterator != queue.end()) {
+                bool remove = false;
+                {
+                    std::lock_guard<std::mutex> task_lock(
+                        iterator->control->mutex);
+                    if (iterator->control->state == CpuTaskState::queued &&
+                        iterator->control->cancel_requested) {
+                        iterator->control->state = CpuTaskState::cancelled;
+                        remove = true;
+                    }
+                }
+
+                if (!remove) {
+                    ++iterator;
+                    continue;
+                }
+
+                iterator->control->completion_cv.notify_all();
+                iterator = queue.erase(iterator);
+                --queued_count;
+                ++cancelled;
+            }
+        }
+        if (queues_empty() && active_count == 0) {
+            idle_cv.notify_all();
+        }
     }
 
     [[nodiscard]] bool called_from_worker() const {
@@ -281,9 +336,14 @@ struct CpuThreadPool::Impl {
     }
 
     void join_workers() {
+        const std::thread::id caller = std::this_thread::get_id();
         for (std::thread& worker : workers) {
             if (worker.joinable()) {
-                worker.join();
+                if (worker.get_id() == caller) {
+                    worker.detach();
+                } else {
+                    worker.join();
+                }
             }
         }
         workers.clear();
@@ -291,10 +351,28 @@ struct CpuThreadPool::Impl {
 };
 
 CpuThreadPool::CpuThreadPool(CpuThreadPoolOptions options)
-    : impl_(std::make_unique<Impl>(std::move(options))) {}
+    : impl_(std::make_shared<Impl>(std::move(options))) {}
 
 CpuThreadPool::~CpuThreadPool() {
-    static_cast<void>(stop(CpuThreadPoolStopMode::cancel_pending));
+    const std::shared_ptr<Impl> implementation = impl_;
+    if (!implementation->called_from_worker()) {
+        static_cast<void>(stop(CpuThreadPoolStopMode::cancel_pending));
+        return;
+    }
+
+    std::lock_guard<std::mutex> lifecycle_lock(
+        implementation->lifecycle_mutex);
+    {
+        std::lock_guard<std::mutex> lock(implementation->mutex);
+        implementation->accepting = false;
+        implementation->status.state = CpuThreadPoolState::stopping;
+        implementation->status.message =
+            "CPU thread pool is stopping during worker-origin destruction";
+        implementation->cancel_queued_locked();
+        implementation->stop_requested = true;
+    }
+    implementation->work_cv.notify_all();
+    implementation->join_workers();
 }
 
 CpuThreadPoolStatus CpuThreadPool::start() {
@@ -319,6 +397,7 @@ CpuThreadPoolStatus CpuThreadPool::start() {
         }
         impl_->stop_requested = false;
         impl_->accepting = false;
+        impl_->priority_schedule_cursor = 0;
         impl_->status.state = CpuThreadPoolState::starting;
         impl_->status.message = "Starting CPU thread pool";
     }
@@ -328,7 +407,9 @@ CpuThreadPoolStatus CpuThreadPool::start() {
         for (std::size_t index = 0;
              index < impl_->options.worker_count;
              ++index) {
-            impl_->workers.emplace_back([this]() { impl_->worker_loop(); });
+            const std::shared_ptr<Impl> implementation = impl_;
+            impl_->workers.emplace_back(
+                [implementation]() { implementation->worker_loop(); });
         }
     } catch (const std::exception& exception) {
         {
@@ -368,12 +449,25 @@ CpuTaskSubmissionResult CpuThreadPool::submit(
         std::lock_guard<std::mutex> lock(impl_->mutex);
         ++impl_->rejected;
         result.code = CpuTaskSubmissionCode::invalid_task;
-        result.message = !task ? "CPU task callable is empty"
-                               : "CPU task priority is invalid";
+        assign_message_noexcept(
+            result.message,
+            !task ? "CPU task callable is empty"
+                  : "CPU task priority is invalid");
         return result;
     }
 
-    auto control = std::make_shared<detail::CpuTaskControl>();
+    std::shared_ptr<detail::CpuTaskControl> control{};
+    try {
+        control = std::make_shared<detail::CpuTaskControl>();
+    } catch (const std::bad_alloc&) {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        ++impl_->rejected;
+        result.code = CpuTaskSubmissionCode::resource_exhausted;
+        assign_message_noexcept(
+            result.message,
+            "CPU task control allocation failed");
+        return result;
+    }
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
         if (!impl_->accepting ||
@@ -385,34 +479,51 @@ CpuTaskSubmissionResult CpuThreadPool::submit(
             result.code = stopping
                               ? CpuTaskSubmissionCode::pool_stopping
                               : CpuTaskSubmissionCode::pool_not_running;
-            result.message = stopping
-                                 ? "CPU thread pool is no longer accepting work"
-                                 : "CPU thread pool is not running";
+            assign_message_noexcept(
+                result.message,
+                stopping
+                    ? "CPU thread pool is no longer accepting work"
+                    : "CPU thread pool is not running");
             return result;
         }
+        impl_->purge_cancelled_queued_locked();
         if (impl_->queued_count >= impl_->options.queue_capacity) {
             ++impl_->rejected;
             result.code = CpuTaskSubmissionCode::queue_full;
-            result.message = "CPU thread pool queue is full";
+            assign_message_noexcept(
+                result.message,
+                "CPU thread pool queue is full");
             return result;
         }
         if (impl_->next_task_id ==
             std::numeric_limits<CpuTaskId>::max()) {
             ++impl_->rejected;
             result.code = CpuTaskSubmissionCode::invalid_task;
-            result.message = "CPU task identifier space is exhausted";
+            assign_message_noexcept(
+                result.message,
+                "CPU task identifier space is exhausted");
             return result;
         }
 
-        const CpuTaskId id = impl_->next_task_id++;
+        const CpuTaskId id = impl_->next_task_id;
         control->task_id = id;
-        impl_->queues[selected].push_back(
-            Impl::QueuedTask{id, std::move(task), control});
+        try {
+            impl_->queues[selected].push_back(
+                Impl::QueuedTask{id, std::move(task), control});
+        } catch (const std::bad_alloc&) {
+            ++impl_->rejected;
+            result.code = CpuTaskSubmissionCode::resource_exhausted;
+            assign_message_noexcept(
+                result.message,
+                "CPU task queue allocation failed");
+            return result;
+        }
+        ++impl_->next_task_id;
         ++impl_->queued_count;
         ++impl_->accepted;
         result.code = CpuTaskSubmissionCode::accepted;
         result.handle = CpuTaskHandle{control};
-        result.message = "CPU task was accepted";
+        assign_message_noexcept(result.message, "CPU task was accepted");
     }
     impl_->work_cv.notify_one();
     return result;
@@ -567,6 +678,8 @@ const char* to_string(CpuTaskSubmissionCode value) noexcept {
             return "pool_not_running";
         case CpuTaskSubmissionCode::queue_full: return "queue_full";
         case CpuTaskSubmissionCode::pool_stopping: return "pool_stopping";
+        case CpuTaskSubmissionCode::resource_exhausted:
+            return "resource_exhausted";
     }
     return "unknown";
 }

@@ -48,9 +48,17 @@ enum class ArmExecutionProfile : std::uint8_t {
 };
 
 // ARM implementer/part information is observational metadata. It must not be
-// used as the sole basis for instruction dispatch.
+// used as the sole basis for instruction dispatch. Logical processor IDs are
+// runtime observations and are retained only to describe which current targets
+// share the same observed processor signature.
 struct ArmProcessorIdentity {
     bool observed = false;
+
+    bool implementer_observed = false;
+    bool architecture_observed = false;
+    bool variant_observed = false;
+    bool part_observed = false;
+    bool revision_observed = false;
 
     std::uint32_t implementer = 0;
     std::uint32_t architecture = 0;
@@ -60,6 +68,11 @@ struct ArmProcessorIdentity {
 
     std::string implementer_text{};
     std::string part_text{};
+    std::vector<int> logical_processor_ids{};
+
+    [[nodiscard]] bool signature_complete() const noexcept {
+        return implementer_observed && part_observed;
+    }
 };
 
 // ARM-specific feature vocabulary supplements CpuIsaCapabilities.
@@ -161,9 +174,9 @@ struct ArmCapabilityQueryStatus {
 struct ArmCapabilitySnapshot {
     ArmIsaCapabilities isa{};
 
-    // One entry may eventually exist per processor identity group. A1 begins
-    // conservatively with whatever identity information the operating system
-    // exposes without assuming a homogeneous ARM machine.
+    // Capability queries leave identity discovery separate. Higher discovery
+    // layers may compose groups from arm_processor_identity without making
+    // processor identity an instruction-dispatch authority.
     std::vector<ArmProcessorIdentity> processor_identities{};
 
     std::size_t target_logical_processor_count = 0;
