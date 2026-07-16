@@ -148,6 +148,21 @@ struct CpuThreadPoolSnapshot {
     std::uint64_t cancelled_task_count = 0;
 
     std::string message{};
+
+    [[nodiscard]] bool accepting_work() const noexcept {
+        return state == CpuThreadPoolState::running;
+    }
+
+    [[nodiscard]] bool quiescent() const noexcept {
+        return queued_task_count == 0 &&
+               active_task_count == 0;
+    }
+
+    [[nodiscard]] bool fully_stopped() const noexcept {
+        return state == CpuThreadPoolState::stopped &&
+               live_worker_count == 0 &&
+               quiescent();
+    }
 };
 
 // Phase 7.2.1 provides one bounded worker pool for one logical execution
