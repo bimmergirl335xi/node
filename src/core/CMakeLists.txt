@@ -1,4 +1,5 @@
 add_library(prometheus_runtime_core STATIC
+    execution_policy.cpp
     service.cpp
     service_context.cpp
     service_manager.cpp
