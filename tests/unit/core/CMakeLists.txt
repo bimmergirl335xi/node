@@ -45,3 +45,19 @@ add_test(
     NAME prometheus_adaptive_state
     COMMAND test_adaptive_state
 )
+
+add_executable(test_architecture_graph
+    test_architecture_graph.cpp
+)
+
+target_link_libraries(test_architecture_graph
+    PRIVATE
+        prometheus_runtime_core
+)
+
+target_compile_features(test_architecture_graph PRIVATE cxx_std_17)
+
+add_test(
+    NAME prometheus_architecture_graph
+    COMMAND test_architecture_graph
+)

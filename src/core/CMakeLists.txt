@@ -1,5 +1,6 @@
 add_library(prometheus_runtime_core STATIC
     adaptive_state.cpp
+    architecture_graph.cpp
     execution_policy.cpp
     service.cpp
     service_context.cpp
