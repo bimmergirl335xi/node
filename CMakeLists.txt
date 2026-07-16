@@ -45,6 +45,7 @@ endforeach()
 
 add_subdirectory(src/kernels)
 add_subdirectory(src/backends)
+add_subdirectory(src/core)
 
 function(prometheus_configure_cuda_target target)
     target_link_libraries(
@@ -101,6 +102,7 @@ if(PROMETHEUS_BUILD_TESTS)
     )
 
     add_subdirectory(tests/unit/backends)
+    add_subdirectory(tests/unit/core)
 endif()
 
 if(PROMETHEUS_BUILD_BENCHMARKS)
