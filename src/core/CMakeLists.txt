@@ -3,6 +3,7 @@ add_library(prometheus_runtime_core STATIC
     architecture_graph.cpp
     architecture_shadow.cpp
     execution_policy.cpp
+    proposal_abi.cpp
     service.cpp
     service_context.cpp
     service_manager.cpp

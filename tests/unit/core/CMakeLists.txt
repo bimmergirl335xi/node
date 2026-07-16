@@ -77,3 +77,19 @@ add_test(
     NAME prometheus_architecture_shadow
     COMMAND test_architecture_shadow
 )
+
+add_executable(test_proposal_abi
+    test_proposal_abi.cpp
+)
+
+target_link_libraries(test_proposal_abi
+    PRIVATE
+        prometheus_runtime_core
+)
+
+target_compile_features(test_proposal_abi PRIVATE cxx_std_17)
+
+add_test(
+    NAME prometheus_proposal_abi
+    COMMAND test_proposal_abi
+)
