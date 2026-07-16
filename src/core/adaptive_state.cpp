@@ -26,6 +26,9 @@ inline constexpr std::size_t kAbsoluteMaximumHistoryEntries = 4096;
 inline constexpr std::size_t kAbsoluteMaximumMessageLength = 4096;
 inline constexpr std::size_t kAbsoluteMaximumMetadataLength = 4096;
 
+static_assert(std::is_nothrow_move_assignable_v<AdaptiveValue>);
+static_assert(std::is_nothrow_move_assignable_v<std::string>);
+
 [[nodiscard]] bool valid_limits(const AdaptiveStateLimits& limits) noexcept {
     return limits.maximum_variables > 0 &&
            limits.maximum_variables <= kAbsoluteMaximumVariables &&
@@ -590,6 +593,106 @@ template <typename Value>
     return "Mutation validation outcome is unknown";
 }
 
+[[nodiscard]] const char* transaction_message(
+    AdaptiveTransactionCode code) noexcept {
+    switch (code) {
+        case AdaptiveTransactionCode::applied:
+            return "Adaptive-state transaction applied atomically";
+        case AdaptiveTransactionCode::rejected:
+            return "Adaptive-state transaction validation failed";
+        case AdaptiveTransactionCode::version_conflict:
+            return "Expected registry revision is stale";
+        case AdaptiveTransactionCode::authority_denied:
+            return "Transaction application authority is denied";
+        case AdaptiveTransactionCode::duplicate:
+            return "Transaction or proposal identity is duplicated";
+        case AdaptiveTransactionCode::invalid_transaction:
+            return "Adaptive-state transaction metadata is invalid";
+        case AdaptiveTransactionCode::resource_exhausted:
+            return "Adaptive-state transaction exhausted a configured resource";
+        case AdaptiveTransactionCode::unknown:
+            return "Adaptive-state transaction outcome is unknown";
+    }
+    return "Adaptive-state transaction outcome is unknown";
+}
+
+[[nodiscard]] const char* checkpoint_message(
+    AdaptiveCheckpointCode code) noexcept {
+    switch (code) {
+        case AdaptiveCheckpointCode::created:
+            return "In-memory checkpoint created";
+        case AdaptiveCheckpointCode::invalid_request:
+            return "Checkpoint request metadata is invalid";
+        case AdaptiveCheckpointCode::authority_denied:
+            return "Checkpoint validation authority is denied";
+        case AdaptiveCheckpointCode::duplicate:
+            return "Checkpoint identity is already present";
+        case AdaptiveCheckpointCode::capacity_exhausted:
+            return "Checkpoint count capacity is exhausted";
+        case AdaptiveCheckpointCode::resource_exhausted:
+            return "Checkpoint byte capacity or allocation is exhausted";
+        case AdaptiveCheckpointCode::no_eligible_variables:
+            return "No rollback-eligible checkpoint variables are registered";
+        case AdaptiveCheckpointCode::unknown:
+            return "Checkpoint outcome is unknown";
+    }
+    return "Checkpoint outcome is unknown";
+}
+
+[[nodiscard]] const char* rollback_message(
+    AdaptiveRollbackCode code) noexcept {
+    switch (code) {
+        case AdaptiveRollbackCode::restored:
+            return "Checkpoint values restored atomically in memory";
+        case AdaptiveRollbackCode::invalid_request:
+            return "Rollback request metadata is invalid";
+        case AdaptiveRollbackCode::authority_denied:
+            return "Rollback authority is denied";
+        case AdaptiveRollbackCode::duplicate:
+            return "Rollback identity has already been processed";
+        case AdaptiveRollbackCode::checkpoint_not_found:
+            return "Checkpoint identity is not present";
+        case AdaptiveRollbackCode::incompatible_checkpoint:
+            return "Checkpoint is incompatible with current descriptors";
+        case AdaptiveRollbackCode::version_conflict:
+            return "Expected rollback registry revision is stale";
+        case AdaptiveRollbackCode::resource_exhausted:
+            return "Rollback exhausted a configured resource";
+        case AdaptiveRollbackCode::unknown:
+            return "Rollback outcome is unknown";
+    }
+    return "Rollback outcome is unknown";
+}
+
+[[nodiscard]] std::size_t adaptive_value_bytes(
+    const AdaptiveValue& value) noexcept {
+    return std::visit(
+        [](const auto& typed_value) -> std::size_t {
+            using Value = std::decay_t<decltype(typed_value)>;
+            if constexpr (std::is_same_v<Value, std::string>) {
+                return typed_value.size();
+            } else if constexpr (
+                std::is_same_v<Value, std::vector<std::int64_t>> ||
+                std::is_same_v<Value, std::vector<std::uint64_t>> ||
+                std::is_same_v<Value, std::vector<double>>) {
+                return typed_value.size() * sizeof(typename Value::value_type);
+            }
+            return sizeof(Value);
+        },
+        value);
+}
+
+template <typename Value>
+void append_bounded(
+    std::vector<Value>& values,
+    Value value,
+    std::size_t maximum_entries) {
+    if (values.size() >= maximum_entries) {
+        values.erase(values.begin());
+    }
+    values.push_back(std::move(value));
+}
+
 }  // namespace
 
 AdaptiveStateRegistry::AdaptiveStateRegistry(AdaptiveStateLimits limits)
@@ -662,10 +765,13 @@ AdaptiveRegistrationResult AdaptiveStateRegistry::register_variable(
 
 AdaptiveMutationValidationResult AdaptiveStateRegistry::validate_mutation(
     const AdaptiveMutationProposal& proposal,
+    const AdaptiveProposalAuthority& proposal_authority,
     const AdaptiveValidationAuthority& authority) const {
     try {
         std::lock_guard<std::mutex> lock(mutex_);
-        return validate_mutation_locked(proposal, authority).validation;
+        return validate_mutation_locked(
+                   proposal, proposal_authority, authority)
+            .validation;
     } catch (const std::bad_alloc&) {
         AdaptiveMutationValidationResult result{};
         result.code = AdaptiveMutationValidationCode::resource_exhausted;
@@ -682,12 +788,15 @@ AdaptiveMutationValidationResult AdaptiveStateRegistry::validate_mutation(
 AdaptiveStateRegistry::PreparedMutation
 AdaptiveStateRegistry::validate_mutation_locked(
     const AdaptiveMutationProposal& proposal,
+    const AdaptiveProposalAuthority& proposal_authority,
     const AdaptiveValidationAuthority& authority) const {
     PreparedMutation prepared{};
     AdaptiveMutationValidationResult& result = prepared.validation;
     result.proposal_id = proposal.proposal_id;
     result.target_variable_id = proposal.target_variable_id;
     result.expected_variable_version = proposal.expected_variable_version;
+    result.proposal_authority_identity =
+        proposal_authority.authority_identity;
     result.validation_authority_identity = authority.authority_identity;
     result.evidence_reference = !authority.evidence_reference.empty()
                                     ? authority.evidence_reference
@@ -709,13 +818,14 @@ AdaptiveStateRegistry::validate_mutation_locked(
     if (!valid_identity(proposal.proposal_id) ||
         !valid_identity(proposal.target_variable_id) ||
         !valid_identity(proposal.source_identity) ||
-        !valid_identity(proposal.proposal_authority.authority_identity) ||
+        !valid_identity(proposal.proposal_authority_reference) ||
+        !valid_identity(proposal_authority.authority_identity) ||
         !valid_identity(authority.authority_identity) ||
         (!proposal.correlation_id.empty() &&
          !valid_identity(proposal.correlation_id)) ||
         proposal.validation_evidence_reference.size() >
             limits_.maximum_metadata_length ||
-        proposal.proposal_authority.evidence_reference.size() >
+        proposal_authority.evidence_reference.size() >
             limits_.maximum_metadata_length ||
         authority.evidence_reference.size() >
             limits_.maximum_metadata_length ||
@@ -729,9 +839,11 @@ AdaptiveStateRegistry::validate_mutation_locked(
         reject(AdaptiveMutationValidationCode::authority_denied);
         return prepared;
     }
-    if (proposal.proposal_authority.decision !=
+    if (proposal_authority.decision !=
             AdaptiveAuthorityDecision::authorized ||
-        authority.decision != AdaptiveAuthorityDecision::authorized) {
+        authority.decision != AdaptiveAuthorityDecision::authorized ||
+        proposal.proposal_authority_reference !=
+            proposal_authority.evidence_reference) {
         reject(AdaptiveMutationValidationCode::authority_denied);
         return prepared;
     }
@@ -834,6 +946,560 @@ AdaptiveStateRegistry::validate_mutation_locked(
     result.resulting_variable_version = record.version + 1;
     reject(AdaptiveMutationValidationCode::accepted);
     return prepared;
+}
+
+AdaptiveTransactionResult AdaptiveStateRegistry::apply_transaction(
+    const AdaptiveStateTransaction& transaction,
+    const AdaptiveProposalAuthority& proposal_authority,
+    const AdaptiveValidationAuthority& validation_authority,
+    const AdaptiveApplicationAuthority& application_authority) {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        AdaptiveTransactionResult result{};
+        result.transaction_id = transaction.transaction_id;
+        result.registry_revision_before = registry_revision_;
+        result.registry_revision_after = registry_revision_;
+        result.application_authority_identity =
+            application_authority.authority_identity;
+        const auto reject = [&result](AdaptiveTransactionCode code) {
+            result.code = code;
+            result.message = transaction_message(code);
+        };
+
+        const auto valid_identity = [this](const std::string& value) {
+            return is_valid_adaptive_identifier(
+                value, limits_.maximum_identifier_length);
+        };
+        if (!limits_valid_ ||
+            transaction.proposals.size() >
+                limits_.maximum_proposals_per_transaction) {
+            reject(AdaptiveTransactionCode::resource_exhausted);
+            return result;
+        }
+        if (!valid_identity(transaction.transaction_id) ||
+            !valid_identity(transaction.coordinator_identity) ||
+            !valid_identity(application_authority.authority_identity) ||
+            application_authority.evidence_reference.size() >
+                limits_.maximum_metadata_length ||
+            transaction.proposals.empty()) {
+            reject(AdaptiveTransactionCode::invalid_transaction);
+            return result;
+        }
+        if (application_authority.decision !=
+            AdaptiveAuthorityDecision::authorized) {
+            reject(AdaptiveTransactionCode::authority_denied);
+            return result;
+        }
+        if (std::find(
+                processed_transaction_ids_.begin(),
+                processed_transaction_ids_.end(),
+                transaction.transaction_id) !=
+            processed_transaction_ids_.end()) {
+            reject(AdaptiveTransactionCode::duplicate);
+            return result;
+        }
+        if (transaction.expected_registry_revision.has_value() &&
+            *transaction.expected_registry_revision != registry_revision_) {
+            reject(AdaptiveTransactionCode::version_conflict);
+            return result;
+        }
+        if (registry_revision_ == std::numeric_limits<std::uint64_t>::max()) {
+            reject(AdaptiveTransactionCode::resource_exhausted);
+            return result;
+        }
+
+        for (std::size_t left = 0; left < transaction.proposals.size();
+             ++left) {
+            for (std::size_t right = left + 1;
+                 right < transaction.proposals.size();
+                 ++right) {
+                if (transaction.proposals[left].proposal_id ==
+                        transaction.proposals[right].proposal_id ||
+                    transaction.proposals[left].target_variable_id ==
+                        transaction.proposals[right].target_variable_id) {
+                    reject(AdaptiveTransactionCode::duplicate);
+                    return result;
+                }
+            }
+        }
+
+        std::vector<PreparedMutation> prepared{};
+        prepared.reserve(transaction.proposals.size());
+        result.proposal_results.reserve(transaction.proposals.size());
+        bool all_valid = true;
+        for (const AdaptiveMutationProposal& proposal :
+             transaction.proposals) {
+            prepared.push_back(
+                validate_mutation_locked(
+                    proposal,
+                    proposal_authority,
+                    validation_authority));
+            result.proposal_results.push_back(prepared.back().validation);
+            all_valid = all_valid && prepared.back().validation.accepted();
+        }
+
+        AdaptiveTransactionSummary summary{};
+        summary.transaction_id = transaction.transaction_id;
+        summary.proposal_count = transaction.proposals.size();
+        summary.registry_revision_before = registry_revision_;
+        summary.registry_revision_after = registry_revision_;
+        summary.coordinator_identity = transaction.coordinator_identity;
+
+        std::vector<std::string> next_transaction_ids =
+            processed_transaction_ids_;
+        std::vector<std::string> next_proposal_ids = processed_proposal_ids_;
+        std::vector<AdaptiveTransactionSummary> next_history =
+            transaction_history_;
+        append_bounded(
+            next_transaction_ids,
+            transaction.transaction_id,
+            limits_.maximum_history_entries);
+        for (const AdaptiveMutationProposal& proposal :
+             transaction.proposals) {
+            append_bounded(
+                next_proposal_ids,
+                proposal.proposal_id,
+                limits_.maximum_history_entries);
+        }
+
+        if (!all_valid) {
+            reject(AdaptiveTransactionCode::rejected);
+            summary.code = result.code;
+            append_bounded(
+                next_history,
+                std::move(summary),
+                limits_.maximum_history_entries);
+            processed_transaction_ids_.swap(next_transaction_ids);
+            processed_proposal_ids_.swap(next_proposal_ids);
+            transaction_history_.swap(next_history);
+            return result;
+        }
+
+        struct CommitRecord {
+            std::size_t variable_index = 0;
+            AdaptiveValue value{false};
+            std::string mutation_id{};
+            std::string source_identity{};
+            std::string validation_evidence{};
+        };
+        std::vector<CommitRecord> commits{};
+        commits.reserve(prepared.size());
+        result.changed_variables.reserve(prepared.size());
+        for (std::size_t index = 0; index < prepared.size(); ++index) {
+            const AdaptiveMutationProposal& proposal =
+                transaction.proposals[index];
+            const auto variable = std::find_if(
+                variables_.begin(),
+                variables_.end(),
+                [&proposal](const VariableRecord& record) {
+                    return record.descriptor.variable_id ==
+                           proposal.target_variable_id;
+                });
+            if (variable == variables_.end()) {
+                reject(AdaptiveTransactionCode::rejected);
+                return result;
+            }
+            const std::size_t variable_index =
+                static_cast<std::size_t>(
+                    std::distance(variables_.begin(), variable));
+            CommitRecord commit{};
+            commit.variable_index = variable_index;
+            commit.value = std::move(prepared[index].resulting_value);
+            commit.mutation_id = proposal.proposal_id;
+            commit.source_identity = proposal.source_identity;
+            commit.validation_evidence =
+                prepared[index].validation.evidence_reference;
+            commits.push_back(std::move(commit));
+            result.changed_variables.push_back(
+                {proposal.target_variable_id,
+                 variable->version,
+                 variable->version + 1});
+        }
+
+        const std::uint64_t new_revision = registry_revision_ + 1;
+        reject(AdaptiveTransactionCode::applied);
+        result.registry_revision_after = new_revision;
+        result.application_occurred = true;
+        summary.code = result.code;
+        summary.registry_revision_after = new_revision;
+        summary.application_occurred = true;
+        append_bounded(
+            next_history,
+            std::move(summary),
+            limits_.maximum_history_entries);
+
+        for (CommitRecord& commit : commits) {
+            VariableRecord& variable = variables_[commit.variable_index];
+            variable.value = std::move(commit.value);
+            ++variable.version;
+            variable.last_mutation_id = std::move(commit.mutation_id);
+            variable.last_source_identity =
+                std::move(commit.source_identity);
+            variable.last_update_category =
+                AdaptiveUpdateCategory::mutation;
+            variable.last_validation_evidence =
+                std::move(commit.validation_evidence);
+            variable.condition = AdaptiveVariableCondition::ready;
+            variable.last_changed_registry_revision = new_revision;
+        }
+        registry_revision_ = new_revision;
+        processed_transaction_ids_.swap(next_transaction_ids);
+        processed_proposal_ids_.swap(next_proposal_ids);
+        transaction_history_.swap(next_history);
+        return result;
+    } catch (const std::bad_alloc&) {
+        AdaptiveTransactionResult result{};
+        result.code = AdaptiveTransactionCode::resource_exhausted;
+        result.message = transaction_message(result.code);
+        return result;
+    } catch (...) {
+        AdaptiveTransactionResult result{};
+        result.code = AdaptiveTransactionCode::rejected;
+        result.message = "Adaptive-state transaction failed safely";
+        return result;
+    }
+}
+
+AdaptiveCheckpointResult AdaptiveStateRegistry::create_checkpoint(
+    const AdaptiveCheckpointRequest& request,
+    const AdaptiveValidationAuthority& authority) {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        AdaptiveCheckpointResult result{};
+        result.summary.checkpoint_id = request.checkpoint_id;
+        result.summary.creation_source = request.creation_source;
+        result.summary.reason = request.reason;
+        result.summary.registry_revision = registry_revision_;
+        const auto reject = [&result](AdaptiveCheckpointCode code) {
+            result.code = code;
+            result.message = checkpoint_message(code);
+            result.summary.validation_status =
+                AdaptiveCheckpointValidationStatus::rejected;
+        };
+        const auto valid_identity = [this](const std::string& value) {
+            return is_valid_adaptive_identifier(
+                value, limits_.maximum_identifier_length);
+        };
+        if (!limits_valid_) {
+            reject(AdaptiveCheckpointCode::resource_exhausted);
+            return result;
+        }
+        if (!valid_identity(request.checkpoint_id) ||
+            !valid_identity(request.creation_source) ||
+            !valid_identity(authority.authority_identity) ||
+            request.reason == AdaptiveCheckpointReason::unknown ||
+            request.metadata_reference.size() >
+                limits_.maximum_metadata_length ||
+            authority.evidence_reference.size() >
+                limits_.maximum_metadata_length) {
+            reject(AdaptiveCheckpointCode::invalid_request);
+            return result;
+        }
+        if (authority.decision != AdaptiveAuthorityDecision::authorized) {
+            reject(AdaptiveCheckpointCode::authority_denied);
+            return result;
+        }
+        if (std::find_if(
+                checkpoints_.begin(),
+                checkpoints_.end(),
+                [&request](const CheckpointRecord& checkpoint) {
+                    return checkpoint.summary.checkpoint_id ==
+                           request.checkpoint_id;
+                }) != checkpoints_.end()) {
+            reject(AdaptiveCheckpointCode::duplicate);
+            return result;
+        }
+        if (checkpoints_.size() >= limits_.maximum_checkpoints) {
+            reject(AdaptiveCheckpointCode::capacity_exhausted);
+            return result;
+        }
+
+        CheckpointRecord checkpoint{};
+        checkpoint.summary = result.summary;
+        checkpoint.metadata_reference = request.metadata_reference;
+        checkpoint.variables.reserve(variables_.size());
+        std::size_t estimated_bytes =
+            sizeof(CheckpointRecord) + request.checkpoint_id.size() +
+            request.creation_source.size() + request.metadata_reference.size();
+        for (const VariableRecord& variable : variables_) {
+            if (!variable.descriptor.rollback_eligible ||
+                variable.descriptor.persistence !=
+                    AdaptivePersistenceClass::checkpoint_eligible) {
+                continue;
+            }
+            const std::size_t variable_bytes =
+                sizeof(CheckpointVariable) +
+                variable.descriptor.variable_id.size() +
+                adaptive_value_bytes(variable.value);
+            if (estimated_bytes >
+                std::numeric_limits<std::size_t>::max() - variable_bytes) {
+                reject(AdaptiveCheckpointCode::resource_exhausted);
+                return result;
+            }
+            estimated_bytes += variable_bytes;
+            checkpoint.variables.push_back(
+                {variable.descriptor.variable_id,
+                 variable.value,
+                 variable.version,
+                 variable.descriptor.descriptor_version,
+                 variable.descriptor.schema_version});
+        }
+        if (checkpoint.variables.empty()) {
+            reject(AdaptiveCheckpointCode::no_eligible_variables);
+            return result;
+        }
+        std::sort(
+            checkpoint.variables.begin(),
+            checkpoint.variables.end(),
+            [](const CheckpointVariable& left,
+               const CheckpointVariable& right) {
+                return left.variable_id < right.variable_id;
+            });
+        if (estimated_bytes > limits_.maximum_checkpoint_bytes ||
+            checkpoint_bytes_ >
+                limits_.maximum_checkpoint_bytes - estimated_bytes) {
+            reject(AdaptiveCheckpointCode::resource_exhausted);
+            return result;
+        }
+
+        checkpoint.summary.variable_count = checkpoint.variables.size();
+        checkpoint.summary.estimated_bytes = estimated_bytes;
+        checkpoint.summary.validation_status =
+            AdaptiveCheckpointValidationStatus::validated;
+        result.summary = checkpoint.summary;
+        result.code = AdaptiveCheckpointCode::created;
+        result.message = checkpoint_message(result.code);
+        checkpoints_.push_back(std::move(checkpoint));
+        checkpoint_bytes_ += estimated_bytes;
+        return result;
+    } catch (const std::bad_alloc&) {
+        AdaptiveCheckpointResult result{};
+        result.code = AdaptiveCheckpointCode::resource_exhausted;
+        result.message = checkpoint_message(result.code);
+        return result;
+    } catch (...) {
+        AdaptiveCheckpointResult result{};
+        result.code = AdaptiveCheckpointCode::invalid_request;
+        result.message = "Checkpoint creation failed safely";
+        return result;
+    }
+}
+
+AdaptiveRollbackResult AdaptiveStateRegistry::rollback(
+    const AdaptiveRollbackRequest& request,
+    const AdaptiveRollbackAuthority& authority) {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        AdaptiveRollbackResult result{};
+        result.rollback_id = request.rollback_id;
+        result.checkpoint_id = request.checkpoint_id;
+        result.registry_revision_before = registry_revision_;
+        result.registry_revision_after = registry_revision_;
+        const auto reject = [&result](AdaptiveRollbackCode code) {
+            result.code = code;
+            result.message = rollback_message(code);
+        };
+        const auto valid_identity = [this](const std::string& value) {
+            return is_valid_adaptive_identifier(
+                value, limits_.maximum_identifier_length);
+        };
+        if (!limits_valid_) {
+            reject(AdaptiveRollbackCode::resource_exhausted);
+            return result;
+        }
+        if (!valid_identity(request.rollback_id) ||
+            !valid_identity(request.checkpoint_id) ||
+            !valid_identity(request.source_identity) ||
+            !valid_identity(authority.authority_identity) ||
+            request.reason_reference.size() >
+                limits_.maximum_metadata_length ||
+            authority.evidence_reference.size() >
+                limits_.maximum_metadata_length) {
+            reject(AdaptiveRollbackCode::invalid_request);
+            return result;
+        }
+        if (authority.decision != AdaptiveAuthorityDecision::authorized) {
+            reject(AdaptiveRollbackCode::authority_denied);
+            return result;
+        }
+        if (std::find(
+                processed_rollback_ids_.begin(),
+                processed_rollback_ids_.end(),
+                request.rollback_id) != processed_rollback_ids_.end()) {
+            reject(AdaptiveRollbackCode::duplicate);
+            return result;
+        }
+        if (request.expected_registry_revision.has_value() &&
+            *request.expected_registry_revision != registry_revision_) {
+            reject(AdaptiveRollbackCode::version_conflict);
+            return result;
+        }
+        const auto checkpoint = std::find_if(
+            checkpoints_.begin(),
+            checkpoints_.end(),
+            [&request](const CheckpointRecord& record) {
+                return record.summary.checkpoint_id == request.checkpoint_id;
+            });
+        if (checkpoint == checkpoints_.end()) {
+            reject(AdaptiveRollbackCode::checkpoint_not_found);
+            return result;
+        }
+        if ((request.expected_checkpoint_registry_revision.has_value() &&
+             *request.expected_checkpoint_registry_revision !=
+                 checkpoint->summary.registry_revision) ||
+            checkpoint->summary.validation_status !=
+                AdaptiveCheckpointValidationStatus::validated) {
+            reject(AdaptiveRollbackCode::incompatible_checkpoint);
+            return result;
+        }
+        if (registry_revision_ == std::numeric_limits<std::uint64_t>::max()) {
+            reject(AdaptiveRollbackCode::resource_exhausted);
+            return result;
+        }
+
+        struct RestoreRecord {
+            std::size_t variable_index = 0;
+            AdaptiveValue value{false};
+            std::string mutation_id{};
+            std::string source_identity{};
+            std::string validation_evidence{};
+        };
+        std::vector<RestoreRecord> restores{};
+        restores.reserve(checkpoint->variables.size());
+        result.changed_variables.reserve(checkpoint->variables.size());
+        for (const CheckpointVariable& checkpoint_variable :
+             checkpoint->variables) {
+            const auto variable = std::find_if(
+                variables_.begin(),
+                variables_.end(),
+                [&checkpoint_variable](const VariableRecord& record) {
+                    return record.descriptor.variable_id ==
+                           checkpoint_variable.variable_id;
+                });
+            if (variable == variables_.end() ||
+                !variable->descriptor.rollback_eligible ||
+                variable->descriptor.persistence !=
+                    AdaptivePersistenceClass::checkpoint_eligible ||
+                variable->descriptor.descriptor_version !=
+                    checkpoint_variable.descriptor_version ||
+                variable->descriptor.schema_version !=
+                    checkpoint_variable.schema_version ||
+                !adaptive_value_in_bounds(
+                    checkpoint_variable.value,
+                    variable->descriptor.hard_bounds) ||
+                (variable->descriptor.soft_bounds.enabled &&
+                 !adaptive_value_in_bounds(
+                     checkpoint_variable.value,
+                     variable->descriptor.soft_bounds))) {
+                reject(AdaptiveRollbackCode::incompatible_checkpoint);
+                return result;
+            }
+            if (variable->version ==
+                std::numeric_limits<std::uint64_t>::max()) {
+                reject(AdaptiveRollbackCode::resource_exhausted);
+                return result;
+            }
+            const std::size_t variable_index =
+                static_cast<std::size_t>(
+                    std::distance(variables_.begin(), variable));
+            RestoreRecord restore{};
+            restore.variable_index = variable_index;
+            restore.value = checkpoint_variable.value;
+            restore.mutation_id = request.rollback_id;
+            restore.source_identity = request.source_identity;
+            restore.validation_evidence = request.checkpoint_id;
+            restores.push_back(std::move(restore));
+            result.changed_variables.push_back(
+                {checkpoint_variable.variable_id,
+                 variable->version,
+                 variable->version + 1});
+        }
+
+        std::vector<std::string> next_rollback_ids =
+            processed_rollback_ids_;
+        std::vector<AdaptiveRollbackSummary> next_history =
+            rollback_history_;
+        append_bounded(
+            next_rollback_ids,
+            request.rollback_id,
+            limits_.maximum_history_entries);
+        AdaptiveRollbackSummary summary{};
+        summary.rollback_id = request.rollback_id;
+        summary.checkpoint_id = request.checkpoint_id;
+        summary.code = AdaptiveRollbackCode::restored;
+        summary.variable_count = restores.size();
+        summary.registry_revision_before = registry_revision_;
+        summary.registry_revision_after = registry_revision_ + 1;
+        summary.restoration_occurred = true;
+        summary.source_identity = request.source_identity;
+        append_bounded(
+            next_history,
+            std::move(summary),
+            limits_.maximum_history_entries);
+
+        const std::uint64_t new_revision = registry_revision_ + 1;
+        result.code = AdaptiveRollbackCode::restored;
+        result.message = rollback_message(result.code);
+        result.registry_revision_after = new_revision;
+        result.restoration_occurred = true;
+        for (RestoreRecord& restore : restores) {
+            VariableRecord& variable = variables_[restore.variable_index];
+            variable.value = std::move(restore.value);
+            ++variable.version;
+            variable.last_mutation_id = std::move(restore.mutation_id);
+            variable.last_source_identity =
+                std::move(restore.source_identity);
+            variable.last_update_category = AdaptiveUpdateCategory::rollback;
+            variable.last_validation_evidence =
+                std::move(restore.validation_evidence);
+            variable.condition = AdaptiveVariableCondition::ready;
+            variable.last_changed_registry_revision = new_revision;
+        }
+        registry_revision_ = new_revision;
+        processed_rollback_ids_.swap(next_rollback_ids);
+        rollback_history_.swap(next_history);
+        return result;
+    } catch (const std::bad_alloc&) {
+        AdaptiveRollbackResult result{};
+        result.code = AdaptiveRollbackCode::resource_exhausted;
+        result.message = rollback_message(result.code);
+        return result;
+    } catch (...) {
+        AdaptiveRollbackResult result{};
+        result.code = AdaptiveRollbackCode::invalid_request;
+        result.message = "Rollback failed safely";
+        return result;
+    }
+}
+
+std::vector<AdaptiveCheckpointSummary>
+AdaptiveStateRegistry::checkpoint_summaries() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<AdaptiveCheckpointSummary> result{};
+    result.reserve(checkpoints_.size());
+    for (const CheckpointRecord& checkpoint : checkpoints_) {
+        result.push_back(checkpoint.summary);
+    }
+    std::sort(
+        result.begin(),
+        result.end(),
+        [](const AdaptiveCheckpointSummary& left,
+           const AdaptiveCheckpointSummary& right) {
+            return left.checkpoint_id < right.checkpoint_id;
+        });
+    return result;
+}
+
+std::vector<AdaptiveTransactionSummary>
+AdaptiveStateRegistry::recent_transaction_history() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return transaction_history_;
+}
+
+std::vector<AdaptiveRollbackSummary>
+AdaptiveStateRegistry::recent_rollback_history() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return rollback_history_;
 }
 
 std::optional<AdaptiveVariableSnapshot> AdaptiveStateRegistry::find(
@@ -1089,6 +1755,79 @@ const char* to_string(AdaptiveMutationValidationCode value) noexcept {
         case AdaptiveMutationValidationCode::incompatible_rollback:
             return "incompatible_rollback";
         case AdaptiveMutationValidationCode::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveTransactionCode value) noexcept {
+    switch (value) {
+        case AdaptiveTransactionCode::applied: return "applied";
+        case AdaptiveTransactionCode::rejected: return "rejected";
+        case AdaptiveTransactionCode::version_conflict:
+            return "version_conflict";
+        case AdaptiveTransactionCode::authority_denied:
+            return "authority_denied";
+        case AdaptiveTransactionCode::duplicate: return "duplicate";
+        case AdaptiveTransactionCode::invalid_transaction:
+            return "invalid_transaction";
+        case AdaptiveTransactionCode::resource_exhausted:
+            return "resource_exhausted";
+        case AdaptiveTransactionCode::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveCheckpointReason value) noexcept {
+    switch (value) {
+        case AdaptiveCheckpointReason::operator_requested:
+            return "operator_requested";
+        case AdaptiveCheckpointReason::before_controlled_change:
+            return "before_controlled_change";
+        case AdaptiveCheckpointReason::recovery_baseline:
+            return "recovery_baseline";
+        case AdaptiveCheckpointReason::test_evidence:
+            return "test_evidence";
+        case AdaptiveCheckpointReason::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveCheckpointCode value) noexcept {
+    switch (value) {
+        case AdaptiveCheckpointCode::created: return "created";
+        case AdaptiveCheckpointCode::invalid_request:
+            return "invalid_request";
+        case AdaptiveCheckpointCode::authority_denied:
+            return "authority_denied";
+        case AdaptiveCheckpointCode::duplicate: return "duplicate";
+        case AdaptiveCheckpointCode::capacity_exhausted:
+            return "capacity_exhausted";
+        case AdaptiveCheckpointCode::resource_exhausted:
+            return "resource_exhausted";
+        case AdaptiveCheckpointCode::no_eligible_variables:
+            return "no_eligible_variables";
+        case AdaptiveCheckpointCode::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveRollbackCode value) noexcept {
+    switch (value) {
+        case AdaptiveRollbackCode::restored: return "restored";
+        case AdaptiveRollbackCode::invalid_request:
+            return "invalid_request";
+        case AdaptiveRollbackCode::authority_denied:
+            return "authority_denied";
+        case AdaptiveRollbackCode::duplicate: return "duplicate";
+        case AdaptiveRollbackCode::checkpoint_not_found:
+            return "checkpoint_not_found";
+        case AdaptiveRollbackCode::incompatible_checkpoint:
+            return "incompatible_checkpoint";
+        case AdaptiveRollbackCode::version_conflict:
+            return "version_conflict";
+        case AdaptiveRollbackCode::resource_exhausted:
+            return "resource_exhausted";
+        case AdaptiveRollbackCode::unknown: return "unknown";
     }
     return "unknown";
 }

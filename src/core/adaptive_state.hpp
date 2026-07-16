@@ -231,7 +231,7 @@ struct AdaptiveMutationProposal {
     std::string source_identity{};
     AdaptiveMutationSourceCategory source_category =
         AdaptiveMutationSourceCategory::unknown;
-    AdaptiveProposalAuthority proposal_authority{};
+    std::string proposal_authority_reference{};
     std::string correlation_id{};
     std::string validation_evidence_reference{};
     std::uint64_t expected_variable_version = 0;
@@ -271,12 +271,177 @@ struct AdaptiveMutationValidationResult {
     std::uint64_t expected_variable_version = 0;
     std::uint64_t current_variable_version = 0;
     std::uint64_t resulting_variable_version = 0;
+    std::string proposal_authority_identity{};
     std::string validation_authority_identity{};
     std::string evidence_reference{};
 
     [[nodiscard]] bool accepted() const noexcept {
         return code == AdaptiveMutationValidationCode::accepted;
     }
+};
+
+struct AdaptiveApplicationAuthority {
+    AdaptiveAuthorityDecision decision = AdaptiveAuthorityDecision::unknown;
+    std::string authority_identity{};
+    std::string evidence_reference{};
+};
+
+struct AdaptiveRollbackAuthority {
+    AdaptiveAuthorityDecision decision = AdaptiveAuthorityDecision::unknown;
+    std::string authority_identity{};
+    std::string evidence_reference{};
+};
+
+struct AdaptiveStateTransaction {
+    std::string transaction_id{};
+    std::string coordinator_identity{};
+    std::optional<std::uint64_t> expected_registry_revision{};
+    std::vector<AdaptiveMutationProposal> proposals{};
+};
+
+enum class AdaptiveTransactionCode : std::uint8_t {
+    applied = 0,
+    rejected,
+    version_conflict,
+    authority_denied,
+    duplicate,
+    invalid_transaction,
+    resource_exhausted,
+    unknown,
+};
+
+struct AdaptiveChangedVariable {
+    std::string variable_id{};
+    std::uint64_t old_version = 0;
+    std::uint64_t new_version = 0;
+};
+
+struct AdaptiveTransactionResult {
+    std::string transaction_id{};
+    AdaptiveTransactionCode code = AdaptiveTransactionCode::unknown;
+    std::string message{};
+    std::vector<AdaptiveMutationValidationResult> proposal_results{};
+    std::vector<AdaptiveChangedVariable> changed_variables{};
+    std::uint64_t registry_revision_before = 0;
+    std::uint64_t registry_revision_after = 0;
+    bool application_occurred = false;
+    std::string application_authority_identity{};
+
+    [[nodiscard]] bool applied() const noexcept {
+        return code == AdaptiveTransactionCode::applied &&
+               application_occurred;
+    }
+};
+
+struct AdaptiveTransactionSummary {
+    std::string transaction_id{};
+    AdaptiveTransactionCode code = AdaptiveTransactionCode::unknown;
+    std::size_t proposal_count = 0;
+    std::uint64_t registry_revision_before = 0;
+    std::uint64_t registry_revision_after = 0;
+    bool application_occurred = false;
+    std::string coordinator_identity{};
+};
+
+enum class AdaptiveCheckpointReason : std::uint8_t {
+    operator_requested = 0,
+    before_controlled_change,
+    recovery_baseline,
+    test_evidence,
+    unknown,
+};
+
+enum class AdaptiveCheckpointValidationStatus : std::uint8_t {
+    validated = 0,
+    rejected,
+    unknown,
+};
+
+struct AdaptiveCheckpointRequest {
+    std::string checkpoint_id{};
+    std::string creation_source{};
+    AdaptiveCheckpointReason reason = AdaptiveCheckpointReason::unknown;
+    std::string metadata_reference{};
+};
+
+enum class AdaptiveCheckpointCode : std::uint8_t {
+    created = 0,
+    invalid_request,
+    authority_denied,
+    duplicate,
+    capacity_exhausted,
+    resource_exhausted,
+    no_eligible_variables,
+    unknown,
+};
+
+struct AdaptiveCheckpointSummary {
+    std::string checkpoint_id{};
+    std::uint64_t registry_revision = 0;
+    std::size_t variable_count = 0;
+    std::size_t estimated_bytes = 0;
+    std::string creation_source{};
+    AdaptiveCheckpointReason reason = AdaptiveCheckpointReason::unknown;
+    AdaptiveCheckpointValidationStatus validation_status =
+        AdaptiveCheckpointValidationStatus::unknown;
+};
+
+struct AdaptiveCheckpointResult {
+    AdaptiveCheckpointCode code = AdaptiveCheckpointCode::unknown;
+    std::string message{};
+    AdaptiveCheckpointSummary summary{};
+
+    [[nodiscard]] bool created() const noexcept {
+        return code == AdaptiveCheckpointCode::created;
+    }
+};
+
+struct AdaptiveRollbackRequest {
+    std::string rollback_id{};
+    std::string checkpoint_id{};
+    std::string source_identity{};
+    std::string reason_reference{};
+    std::optional<std::uint64_t> expected_checkpoint_registry_revision{};
+    std::optional<std::uint64_t> expected_registry_revision{};
+};
+
+enum class AdaptiveRollbackCode : std::uint8_t {
+    restored = 0,
+    invalid_request,
+    authority_denied,
+    duplicate,
+    checkpoint_not_found,
+    incompatible_checkpoint,
+    version_conflict,
+    resource_exhausted,
+    unknown,
+};
+
+struct AdaptiveRollbackResult {
+    std::string rollback_id{};
+    std::string checkpoint_id{};
+    AdaptiveRollbackCode code = AdaptiveRollbackCode::unknown;
+    std::string message{};
+    std::vector<AdaptiveChangedVariable> changed_variables{};
+    std::uint64_t registry_revision_before = 0;
+    std::uint64_t registry_revision_after = 0;
+    bool restoration_occurred = false;
+
+    [[nodiscard]] bool restored() const noexcept {
+        return code == AdaptiveRollbackCode::restored &&
+               restoration_occurred;
+    }
+};
+
+struct AdaptiveRollbackSummary {
+    std::string rollback_id{};
+    std::string checkpoint_id{};
+    AdaptiveRollbackCode code = AdaptiveRollbackCode::unknown;
+    std::size_t variable_count = 0;
+    std::uint64_t registry_revision_before = 0;
+    std::uint64_t registry_revision_after = 0;
+    bool restoration_occurred = false;
+    std::string source_identity{};
 };
 
 // Runtime-local owner of live adaptive values. Descriptors are copied during
@@ -298,7 +463,25 @@ public:
     // and never invokes caller-provided code.
     [[nodiscard]] AdaptiveMutationValidationResult validate_mutation(
         const AdaptiveMutationProposal& proposal,
+        const AdaptiveProposalAuthority& proposal_authority,
         const AdaptiveValidationAuthority& authority) const;
+    [[nodiscard]] AdaptiveTransactionResult apply_transaction(
+        const AdaptiveStateTransaction& transaction,
+        const AdaptiveProposalAuthority& proposal_authority,
+        const AdaptiveValidationAuthority& validation_authority,
+        const AdaptiveApplicationAuthority& application_authority);
+    [[nodiscard]] AdaptiveCheckpointResult create_checkpoint(
+        const AdaptiveCheckpointRequest& request,
+        const AdaptiveValidationAuthority& authority);
+    [[nodiscard]] AdaptiveRollbackResult rollback(
+        const AdaptiveRollbackRequest& request,
+        const AdaptiveRollbackAuthority& authority);
+    [[nodiscard]] std::vector<AdaptiveCheckpointSummary>
+    checkpoint_summaries() const;
+    [[nodiscard]] std::vector<AdaptiveTransactionSummary>
+    recent_transaction_history() const;
+    [[nodiscard]] std::vector<AdaptiveRollbackSummary>
+    recent_rollback_history() const;
 
     [[nodiscard]] std::optional<AdaptiveVariableSnapshot> find(
         const std::string& variable_id,
@@ -330,18 +513,43 @@ private:
         std::uint64_t last_changed_registry_revision = 0;
     };
 
+    struct CheckpointVariable {
+        std::string variable_id{};
+        AdaptiveValue value{false};
+        std::uint64_t version = 0;
+        std::uint64_t descriptor_version = 0;
+        std::uint64_t schema_version = 0;
+    };
+
+    struct CheckpointRecord {
+        AdaptiveCheckpointSummary summary{};
+        std::string metadata_reference{};
+        std::vector<CheckpointVariable> variables{};
+    };
+
     [[nodiscard]] AdaptiveVariableSnapshot make_snapshot_locked(
         const VariableRecord& record,
         AdaptiveSnapshotMode mode) const;
     [[nodiscard]] PreparedMutation validate_mutation_locked(
         const AdaptiveMutationProposal& proposal,
+        const AdaptiveProposalAuthority& proposal_authority,
         const AdaptiveValidationAuthority& authority) const;
 
     AdaptiveStateLimits limits_{};
     bool limits_valid_ = false;
+    // One non-recursive mutex protects all registry-owned live state and
+    // bounded evidence stores. Methods never nest registry locks or invoke
+    // callbacks; bounded commit/checkpoint allocations complete before live
+    // values are changed.
     mutable std::mutex mutex_{};
     std::vector<VariableRecord> variables_{};
     std::vector<std::string> processed_proposal_ids_{};
+    std::vector<std::string> processed_transaction_ids_{};
+    std::vector<std::string> processed_rollback_ids_{};
+    std::vector<AdaptiveTransactionSummary> transaction_history_{};
+    std::vector<AdaptiveRollbackSummary> rollback_history_{};
+    std::vector<CheckpointRecord> checkpoints_{};
+    std::size_t checkpoint_bytes_ = 0;
     std::uint64_t registry_revision_ = 0;
 };
 
@@ -363,6 +571,10 @@ private:
 [[nodiscard]] const char* to_string(AdaptiveAuthorityDecision value) noexcept;
 [[nodiscard]] const char* to_string(
     AdaptiveMutationValidationCode value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveTransactionCode value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveCheckpointReason value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveCheckpointCode value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveRollbackCode value) noexcept;
 
 }  // namespace prometheus::core
 
