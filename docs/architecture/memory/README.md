@@ -59,8 +59,8 @@ The following separations are foundational:
 | [MEM-0004](MEM-0004-operation-contracts.md) | Memory Operation Contracts | Draft |
 | [MEM-0005](MEM-0005-availability-and-consistency.md) | Availability, Completeness, and Consistency | Draft |
 | [MEM-0006](MEM-0006-retention-and-lifecycle.md) | Retention and Memory Lifecycle | Draft |
-| [MEM-0007](MEM-0007-distributed-custody.md) | Distributed Custody and Locality | Planned |
-| [MEM-0008](MEM-0008-recovery-and-reconstruction.md) | Recovery, Repair, and Reconstruction | Planned |
+| [MEM-0007](MEM-0007-distributed-custody.md) | Distributed Custody and Locality | Draft |
+| [MEM-0008](MEM-0008-recovery-and-reconstruction.md) | Recovery, Repair, and Reconstruction | Draft |
 | [MEM-0009](MEM-0009-acs-integration.md) | ACS Integration | Planned |
 | [MEM-0010](MEM-0010-conformance.md) | Conformance and Failure Validation | Planned |
 
