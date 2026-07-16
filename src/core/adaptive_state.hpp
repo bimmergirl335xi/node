@@ -190,6 +190,95 @@ struct AdaptiveRegistrationResult {
     }
 };
 
+enum class AdaptiveMutationSourceCategory : std::uint8_t {
+    automatic_internal = 0,
+    externally_authorized,
+    operator_directed,
+    recovery,
+    system_policy,
+    unknown,
+};
+
+enum class AdaptiveMutationOperation : std::uint8_t {
+    replace = 0,
+    add,
+    scale,
+    bounded_adjust,
+    unknown,
+};
+
+enum class AdaptiveAuthorityDecision : std::uint8_t {
+    unknown = 0,
+    authorized,
+    denied,
+};
+
+struct AdaptiveProposalAuthority {
+    AdaptiveAuthorityDecision decision = AdaptiveAuthorityDecision::unknown;
+    std::string authority_identity{};
+    std::string evidence_reference{};
+};
+
+struct AdaptiveValidationAuthority {
+    AdaptiveAuthorityDecision decision = AdaptiveAuthorityDecision::unknown;
+    std::string authority_identity{};
+    std::string evidence_reference{};
+};
+
+struct AdaptiveMutationProposal {
+    std::string proposal_id{};
+    std::string target_variable_id{};
+    std::string source_identity{};
+    AdaptiveMutationSourceCategory source_category =
+        AdaptiveMutationSourceCategory::unknown;
+    AdaptiveProposalAuthority proposal_authority{};
+    std::string correlation_id{};
+    std::string validation_evidence_reference{};
+    std::uint64_t expected_variable_version = 0;
+    AdaptiveMutationOperation operation = AdaptiveMutationOperation::unknown;
+    AdaptiveValue operand{false};
+    bool require_rollback_eligibility = false;
+};
+
+enum class AdaptiveMutationValidationCode : std::uint8_t {
+    accepted = 0,
+    rejected,
+    deferred,
+    not_found,
+    version_conflict,
+    type_mismatch,
+    shape_mismatch,
+    out_of_bounds,
+    soft_bound_violation,
+    magnitude_exceeded,
+    arithmetic_overflow,
+    authority_denied,
+    disabled,
+    rate_limited,
+    resource_exhausted,
+    duplicate,
+    invalid_proposal,
+    incompatible_rollback,
+    unknown,
+};
+
+struct AdaptiveMutationValidationResult {
+    std::string proposal_id{};
+    std::string target_variable_id{};
+    AdaptiveMutationValidationCode code =
+        AdaptiveMutationValidationCode::unknown;
+    std::string message{};
+    std::uint64_t expected_variable_version = 0;
+    std::uint64_t current_variable_version = 0;
+    std::uint64_t resulting_variable_version = 0;
+    std::string validation_authority_identity{};
+    std::string evidence_reference{};
+
+    [[nodiscard]] bool accepted() const noexcept {
+        return code == AdaptiveMutationValidationCode::accepted;
+    }
+};
+
 // Runtime-local owner of live adaptive values. Descriptors are copied during
 // registration and never exposed mutably. This initial registry provides no
 // direct value mutation API; all later changes pass through transactions.
@@ -205,6 +294,12 @@ public:
     [[nodiscard]] AdaptiveRegistrationResult register_variable(
         AdaptiveVariableDescriptor descriptor);
 
+    // Validation is pure metadata/value processing. It never commits a value
+    // and never invokes caller-provided code.
+    [[nodiscard]] AdaptiveMutationValidationResult validate_mutation(
+        const AdaptiveMutationProposal& proposal,
+        const AdaptiveValidationAuthority& authority) const;
+
     [[nodiscard]] std::optional<AdaptiveVariableSnapshot> find(
         const std::string& variable_id,
         AdaptiveSnapshotMode mode =
@@ -217,6 +312,11 @@ public:
     [[nodiscard]] std::uint64_t revision() const;
 
 private:
+    struct PreparedMutation {
+        AdaptiveMutationValidationResult validation{};
+        AdaptiveValue resulting_value{false};
+    };
+
     struct VariableRecord {
         AdaptiveVariableDescriptor descriptor{};
         AdaptiveValue value{false};
@@ -233,11 +333,15 @@ private:
     [[nodiscard]] AdaptiveVariableSnapshot make_snapshot_locked(
         const VariableRecord& record,
         AdaptiveSnapshotMode mode) const;
+    [[nodiscard]] PreparedMutation validate_mutation_locked(
+        const AdaptiveMutationProposal& proposal,
+        const AdaptiveValidationAuthority& authority) const;
 
     AdaptiveStateLimits limits_{};
     bool limits_valid_ = false;
     mutable std::mutex mutex_{};
     std::vector<VariableRecord> variables_{};
+    std::vector<std::string> processed_proposal_ids_{};
     std::uint64_t registry_revision_ = 0;
 };
 
@@ -253,6 +357,12 @@ private:
 [[nodiscard]] const char* to_string(AdaptiveUpdateCategory value) noexcept;
 [[nodiscard]] const char* to_string(AdaptiveRegistryCondition value) noexcept;
 [[nodiscard]] const char* to_string(AdaptiveRegistrationCode value) noexcept;
+[[nodiscard]] const char* to_string(
+    AdaptiveMutationSourceCategory value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveMutationOperation value) noexcept;
+[[nodiscard]] const char* to_string(AdaptiveAuthorityDecision value) noexcept;
+[[nodiscard]] const char* to_string(
+    AdaptiveMutationValidationCode value) noexcept;
 
 }  // namespace prometheus::core
 

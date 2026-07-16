@@ -296,6 +296,300 @@ template <typename Value>
         value);
 }
 
+template <typename Value>
+[[nodiscard]] bool checked_add(
+    Value left,
+    Value right,
+    Value& result) noexcept {
+    if constexpr (std::is_same_v<Value, std::int64_t>) {
+        if ((right > 0 &&
+             left > std::numeric_limits<Value>::max() - right) ||
+            (right < 0 &&
+             left < std::numeric_limits<Value>::min() - right)) {
+            return false;
+        }
+    } else if constexpr (std::is_same_v<Value, std::uint64_t>) {
+        if (left > std::numeric_limits<Value>::max() - right) {
+            return false;
+        }
+    }
+    result = left + right;
+    if constexpr (std::is_same_v<Value, double>) {
+        return std::isfinite(left) && std::isfinite(right) &&
+               std::isfinite(result);
+    }
+    return true;
+}
+
+template <typename Value>
+[[nodiscard]] bool checked_multiply(
+    Value left,
+    Value right,
+    Value& result) noexcept {
+    if constexpr (std::is_same_v<Value, std::int64_t>) {
+        if (left == 0 || right == 0) {
+            result = 0;
+            return true;
+        }
+        if ((left == -1 &&
+             right == std::numeric_limits<Value>::min()) ||
+            (right == -1 &&
+             left == std::numeric_limits<Value>::min())) {
+            return false;
+        }
+        if ((left > 0 && right > 0 &&
+             left > std::numeric_limits<Value>::max() / right) ||
+            (left > 0 && right < 0 &&
+             right < std::numeric_limits<Value>::min() / left) ||
+            (left < 0 && right > 0 &&
+             left < std::numeric_limits<Value>::min() / right) ||
+            (left < 0 && right < 0 &&
+             left < std::numeric_limits<Value>::max() / right)) {
+            return false;
+        }
+    } else if constexpr (std::is_same_v<Value, std::uint64_t>) {
+        if (right != 0 &&
+            left > std::numeric_limits<Value>::max() / right) {
+            return false;
+        }
+    }
+    result = left * right;
+    if constexpr (std::is_same_v<Value, double>) {
+        return std::isfinite(left) && std::isfinite(right) &&
+               std::isfinite(result);
+    }
+    return true;
+}
+
+template <typename Value>
+[[nodiscard]] bool transform_scalar(
+    Value current,
+    Value operand,
+    AdaptiveMutationOperation operation,
+    Value& result) noexcept {
+    switch (operation) {
+        case AdaptiveMutationOperation::replace:
+            result = operand;
+            if constexpr (std::is_same_v<Value, double>) {
+                return std::isfinite(result);
+            }
+            return true;
+        case AdaptiveMutationOperation::add:
+        case AdaptiveMutationOperation::bounded_adjust:
+            return checked_add(current, operand, result);
+        case AdaptiveMutationOperation::scale:
+            return checked_multiply(current, operand, result);
+        case AdaptiveMutationOperation::unknown:
+            return false;
+    }
+    return false;
+}
+
+[[nodiscard]] bool value_within_resource_limits(
+    const AdaptiveValue& value,
+    const AdaptiveStateLimits& limits) noexcept {
+    return std::visit(
+        [&limits](const auto& typed_value) {
+            using Value = std::decay_t<decltype(typed_value)>;
+            if constexpr (std::is_same_v<Value, std::string>) {
+                return typed_value.size() <=
+                       limits.maximum_symbolic_value_length;
+            } else if constexpr (
+                std::is_same_v<Value, std::vector<std::int64_t>> ||
+                std::is_same_v<Value, std::vector<std::uint64_t>> ||
+                std::is_same_v<Value, std::vector<double>>) {
+                return typed_value.size() <= limits.maximum_vector_elements;
+            }
+            return true;
+        },
+        value);
+}
+
+[[nodiscard]] AdaptiveMutationValidationCode compute_resulting_value(
+    const AdaptiveVariableDescriptor& descriptor,
+    const AdaptiveValue& current,
+    const AdaptiveMutationProposal& proposal,
+    AdaptiveValue& result) {
+    if (proposal.operation == AdaptiveMutationOperation::unknown) {
+        return AdaptiveMutationValidationCode::invalid_proposal;
+    }
+    if (proposal.operation == AdaptiveMutationOperation::replace) {
+        if (adaptive_value_type(proposal.operand) != descriptor.value_type) {
+            return AdaptiveMutationValidationCode::type_mismatch;
+        }
+        if (is_vector_type(descriptor.value_type) &&
+            value_element_count(proposal.operand) !=
+                value_element_count(current)) {
+            return AdaptiveMutationValidationCode::shape_mismatch;
+        }
+        result = proposal.operand;
+        if (!adaptive_value_in_bounds(result, descriptor.hard_bounds)) {
+            return AdaptiveMutationValidationCode::out_of_bounds;
+        }
+        return AdaptiveMutationValidationCode::accepted;
+    }
+
+    if (!is_numeric_type(descriptor.value_type)) {
+        return AdaptiveMutationValidationCode::type_mismatch;
+    }
+
+    const bool vector_target = is_vector_type(descriptor.value_type);
+    if (!vector_target) {
+        if (adaptive_value_type(proposal.operand) != descriptor.value_type) {
+            return AdaptiveMutationValidationCode::type_mismatch;
+        }
+        return std::visit(
+            [&proposal, &result](const auto& typed_current)
+                -> AdaptiveMutationValidationCode {
+                using Value = std::decay_t<decltype(typed_current)>;
+                if constexpr (std::is_same_v<Value, std::int64_t> ||
+                              std::is_same_v<Value, std::uint64_t> ||
+                              std::is_same_v<Value, double>) {
+                    Value transformed{};
+                    if (!transform_scalar(
+                            typed_current,
+                            std::get<Value>(proposal.operand),
+                            proposal.operation,
+                            transformed)) {
+                        return AdaptiveMutationValidationCode::arithmetic_overflow;
+                    }
+                    result = transformed;
+                    return AdaptiveMutationValidationCode::accepted;
+                }
+                return AdaptiveMutationValidationCode::type_mismatch;
+            },
+            current);
+    }
+
+    if (proposal.operation == AdaptiveMutationOperation::scale) {
+        const AdaptiveValueType scalar_type =
+            descriptor.value_type == AdaptiveValueType::signed_integer_vector
+                ? AdaptiveValueType::signed_integer
+                : descriptor.value_type ==
+                          AdaptiveValueType::unsigned_integer_vector
+                      ? AdaptiveValueType::unsigned_integer
+                      : AdaptiveValueType::floating_point;
+        if (adaptive_value_type(proposal.operand) != scalar_type) {
+            return AdaptiveMutationValidationCode::type_mismatch;
+        }
+    } else {
+        if (adaptive_value_type(proposal.operand) != descriptor.value_type) {
+            return AdaptiveMutationValidationCode::type_mismatch;
+        }
+        if (value_element_count(proposal.operand) !=
+            value_element_count(current)) {
+            return AdaptiveMutationValidationCode::shape_mismatch;
+        }
+    }
+
+    return std::visit(
+        [&proposal, &result](const auto& typed_current)
+            -> AdaptiveMutationValidationCode {
+            using Vector = std::decay_t<decltype(typed_current)>;
+            if constexpr (
+                std::is_same_v<Vector, std::vector<std::int64_t>> ||
+                std::is_same_v<Vector, std::vector<std::uint64_t>> ||
+                std::is_same_v<Vector, std::vector<double>>) {
+                using Value = typename Vector::value_type;
+                Vector transformed(typed_current.size());
+                for (std::size_t index = 0; index < typed_current.size();
+                     ++index) {
+                    const Value operand =
+                        proposal.operation == AdaptiveMutationOperation::scale
+                            ? std::get<Value>(proposal.operand)
+                            : std::get<Vector>(proposal.operand)[index];
+                    if (!transform_scalar(
+                            typed_current[index],
+                            operand,
+                            proposal.operation,
+                            transformed[index])) {
+                        return AdaptiveMutationValidationCode::arithmetic_overflow;
+                    }
+                }
+                result = std::move(transformed);
+                return AdaptiveMutationValidationCode::accepted;
+            }
+            return AdaptiveMutationValidationCode::type_mismatch;
+        },
+        current);
+}
+
+[[nodiscard]] double maximum_value_difference(
+    const AdaptiveValue& left,
+    const AdaptiveValue& right) {
+    return std::visit(
+        [&right](const auto& typed_left) -> double {
+            using Value = std::decay_t<decltype(typed_left)>;
+            if constexpr (std::is_same_v<Value, bool> ||
+                          std::is_same_v<Value, std::string>) {
+                return typed_left == std::get<Value>(right) ? 0.0 : 1.0;
+            } else if constexpr (std::is_same_v<Value, std::int64_t> ||
+                                 std::is_same_v<Value, std::uint64_t> ||
+                                 std::is_same_v<Value, double>) {
+                return static_cast<double>(std::fabs(
+                    static_cast<long double>(typed_left) -
+                    static_cast<long double>(std::get<Value>(right))));
+            } else {
+                const Value& typed_right = std::get<Value>(right);
+                long double maximum = 0.0L;
+                for (std::size_t index = 0; index < typed_left.size(); ++index) {
+                    maximum = std::max(
+                        maximum,
+                        std::fabs(
+                            static_cast<long double>(typed_left[index]) -
+                            static_cast<long double>(typed_right[index])));
+                }
+                return static_cast<double>(maximum);
+            }
+        },
+        left);
+}
+
+[[nodiscard]] const char* validation_message(
+    AdaptiveMutationValidationCode code) noexcept {
+    switch (code) {
+        case AdaptiveMutationValidationCode::accepted:
+            return "Mutation proposal is valid";
+        case AdaptiveMutationValidationCode::not_found:
+            return "Target variable is not registered";
+        case AdaptiveMutationValidationCode::version_conflict:
+            return "Expected variable version is stale";
+        case AdaptiveMutationValidationCode::type_mismatch:
+            return "Mutation operand type is incompatible";
+        case AdaptiveMutationValidationCode::shape_mismatch:
+            return "Mutation operand shape is incompatible";
+        case AdaptiveMutationValidationCode::out_of_bounds:
+            return "Mutation result violates hard bounds";
+        case AdaptiveMutationValidationCode::soft_bound_violation:
+            return "Mutation result violates soft bounds";
+        case AdaptiveMutationValidationCode::magnitude_exceeded:
+            return "Mutation exceeds the maximum per-element magnitude";
+        case AdaptiveMutationValidationCode::arithmetic_overflow:
+            return "Mutation arithmetic is non-finite or would overflow";
+        case AdaptiveMutationValidationCode::authority_denied:
+            return "Mutation authority or source permission is denied";
+        case AdaptiveMutationValidationCode::disabled:
+            return "Target variable is disabled";
+        case AdaptiveMutationValidationCode::rate_limited:
+            return "Mutation violates the minimum revision interval";
+        case AdaptiveMutationValidationCode::resource_exhausted:
+            return "Mutation validation exhausted a configured resource";
+        case AdaptiveMutationValidationCode::duplicate:
+            return "Mutation identity has already been processed";
+        case AdaptiveMutationValidationCode::invalid_proposal:
+            return "Mutation proposal metadata is invalid";
+        case AdaptiveMutationValidationCode::incompatible_rollback:
+            return "Target variable is not rollback eligible";
+        case AdaptiveMutationValidationCode::deferred:
+            return "Mutation validation was deferred";
+        case AdaptiveMutationValidationCode::rejected:
+            return "Mutation proposal was rejected";
+        case AdaptiveMutationValidationCode::unknown:
+            return "Mutation validation outcome is unknown";
+    }
+    return "Mutation validation outcome is unknown";
+}
+
 }  // namespace
 
 AdaptiveStateRegistry::AdaptiveStateRegistry(AdaptiveStateLimits limits)
@@ -364,6 +658,182 @@ AdaptiveRegistrationResult AdaptiveStateRegistry::register_variable(
                 descriptor.variable_id,
                 "Adaptive variable registration failed safely"};
     }
+}
+
+AdaptiveMutationValidationResult AdaptiveStateRegistry::validate_mutation(
+    const AdaptiveMutationProposal& proposal,
+    const AdaptiveValidationAuthority& authority) const {
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return validate_mutation_locked(proposal, authority).validation;
+    } catch (const std::bad_alloc&) {
+        AdaptiveMutationValidationResult result{};
+        result.code = AdaptiveMutationValidationCode::resource_exhausted;
+        result.message = validation_message(result.code);
+        return result;
+    } catch (...) {
+        AdaptiveMutationValidationResult result{};
+        result.code = AdaptiveMutationValidationCode::rejected;
+        result.message = "Mutation validation failed safely";
+        return result;
+    }
+}
+
+AdaptiveStateRegistry::PreparedMutation
+AdaptiveStateRegistry::validate_mutation_locked(
+    const AdaptiveMutationProposal& proposal,
+    const AdaptiveValidationAuthority& authority) const {
+    PreparedMutation prepared{};
+    AdaptiveMutationValidationResult& result = prepared.validation;
+    result.proposal_id = proposal.proposal_id;
+    result.target_variable_id = proposal.target_variable_id;
+    result.expected_variable_version = proposal.expected_variable_version;
+    result.validation_authority_identity = authority.authority_identity;
+    result.evidence_reference = !authority.evidence_reference.empty()
+                                    ? authority.evidence_reference
+                                    : proposal.validation_evidence_reference;
+
+    const auto reject = [&result](AdaptiveMutationValidationCode code) {
+        result.code = code;
+        result.message = validation_message(code);
+    };
+
+    if (!limits_valid_) {
+        reject(AdaptiveMutationValidationCode::resource_exhausted);
+        return prepared;
+    }
+    const auto valid_identity = [this](const std::string& value) {
+        return is_valid_adaptive_identifier(
+            value, limits_.maximum_identifier_length);
+    };
+    if (!valid_identity(proposal.proposal_id) ||
+        !valid_identity(proposal.target_variable_id) ||
+        !valid_identity(proposal.source_identity) ||
+        !valid_identity(proposal.proposal_authority.authority_identity) ||
+        !valid_identity(authority.authority_identity) ||
+        (!proposal.correlation_id.empty() &&
+         !valid_identity(proposal.correlation_id)) ||
+        proposal.validation_evidence_reference.size() >
+            limits_.maximum_metadata_length ||
+        proposal.proposal_authority.evidence_reference.size() >
+            limits_.maximum_metadata_length ||
+        authority.evidence_reference.size() >
+            limits_.maximum_metadata_length ||
+        proposal.expected_variable_version == 0 ||
+        proposal.operation == AdaptiveMutationOperation::unknown) {
+        reject(AdaptiveMutationValidationCode::invalid_proposal);
+        return prepared;
+    }
+    if (proposal.source_category ==
+        AdaptiveMutationSourceCategory::unknown) {
+        reject(AdaptiveMutationValidationCode::authority_denied);
+        return prepared;
+    }
+    if (proposal.proposal_authority.decision !=
+            AdaptiveAuthorityDecision::authorized ||
+        authority.decision != AdaptiveAuthorityDecision::authorized) {
+        reject(AdaptiveMutationValidationCode::authority_denied);
+        return prepared;
+    }
+    if (!value_within_resource_limits(proposal.operand, limits_)) {
+        reject(AdaptiveMutationValidationCode::resource_exhausted);
+        return prepared;
+    }
+    if (std::find(
+            processed_proposal_ids_.begin(),
+            processed_proposal_ids_.end(),
+            proposal.proposal_id) != processed_proposal_ids_.end()) {
+        reject(AdaptiveMutationValidationCode::duplicate);
+        return prepared;
+    }
+
+    const auto iterator = std::find_if(
+        variables_.begin(),
+        variables_.end(),
+        [&proposal](const VariableRecord& record) {
+            return record.descriptor.variable_id ==
+                   proposal.target_variable_id;
+        });
+    if (iterator == variables_.end()) {
+        reject(AdaptiveMutationValidationCode::not_found);
+        return prepared;
+    }
+    const VariableRecord& record = *iterator;
+    result.current_variable_version = record.version;
+    if (!record.descriptor.enabled ||
+        record.condition == AdaptiveVariableCondition::disabled) {
+        reject(AdaptiveMutationValidationCode::disabled);
+        return prepared;
+    }
+
+    const bool automatic = proposal.source_category ==
+                           AdaptiveMutationSourceCategory::automatic_internal;
+    if ((automatic && !record.descriptor.allow_automatic_mutation) ||
+        (!automatic && !record.descriptor.allow_external_mutation)) {
+        reject(AdaptiveMutationValidationCode::authority_denied);
+        return prepared;
+    }
+    if (proposal.expected_variable_version != record.version) {
+        reject(AdaptiveMutationValidationCode::version_conflict);
+        return prepared;
+    }
+    if (proposal.require_rollback_eligibility &&
+        !record.descriptor.rollback_eligible) {
+        reject(AdaptiveMutationValidationCode::incompatible_rollback);
+        return prepared;
+    }
+    if (record.descriptor.provenance_requirement ==
+            AdaptiveProvenanceRequirement::source_and_correlation &&
+        proposal.correlation_id.empty()) {
+        reject(AdaptiveMutationValidationCode::invalid_proposal);
+        return prepared;
+    }
+    if (record.descriptor.provenance_requirement ==
+            AdaptiveProvenanceRequirement::validation_evidence &&
+        result.evidence_reference.empty()) {
+        reject(AdaptiveMutationValidationCode::invalid_proposal);
+        return prepared;
+    }
+    if (record.descriptor.minimum_revision_interval > 0 &&
+        (registry_revision_ < record.last_changed_registry_revision ||
+         registry_revision_ - record.last_changed_registry_revision <
+             record.descriptor.minimum_revision_interval)) {
+        reject(AdaptiveMutationValidationCode::rate_limited);
+        return prepared;
+    }
+
+    AdaptiveMutationValidationCode computation = compute_resulting_value(
+        record.descriptor, record.value, proposal, prepared.resulting_value);
+    if (computation != AdaptiveMutationValidationCode::accepted) {
+        reject(computation);
+        return prepared;
+    }
+    if (!adaptive_value_in_bounds(
+            prepared.resulting_value, record.descriptor.hard_bounds)) {
+        reject(AdaptiveMutationValidationCode::out_of_bounds);
+        return prepared;
+    }
+    if (record.descriptor.soft_bounds.enabled &&
+        !adaptive_value_in_bounds(
+            prepared.resulting_value, record.descriptor.soft_bounds)) {
+        reject(AdaptiveMutationValidationCode::soft_bound_violation);
+        return prepared;
+    }
+    if (record.descriptor.maximum_mutation_magnitude.has_value() &&
+        maximum_value_difference(
+            record.value, prepared.resulting_value) >
+            *record.descriptor.maximum_mutation_magnitude) {
+        reject(AdaptiveMutationValidationCode::magnitude_exceeded);
+        return prepared;
+    }
+    if (record.version == std::numeric_limits<std::uint64_t>::max()) {
+        reject(AdaptiveMutationValidationCode::resource_exhausted);
+        return prepared;
+    }
+
+    result.resulting_variable_version = record.version + 1;
+    reject(AdaptiveMutationValidationCode::accepted);
+    return prepared;
 }
 
 std::optional<AdaptiveVariableSnapshot> AdaptiveStateRegistry::find(
@@ -545,6 +1015,80 @@ const char* to_string(AdaptiveRegistrationCode value) noexcept {
         case AdaptiveRegistrationCode::duplicate_identifier: return "duplicate_identifier";
         case AdaptiveRegistrationCode::capacity_exhausted: return "capacity_exhausted";
         case AdaptiveRegistrationCode::resource_exhausted: return "resource_exhausted";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveMutationSourceCategory value) noexcept {
+    switch (value) {
+        case AdaptiveMutationSourceCategory::automatic_internal:
+            return "automatic_internal";
+        case AdaptiveMutationSourceCategory::externally_authorized:
+            return "externally_authorized";
+        case AdaptiveMutationSourceCategory::operator_directed:
+            return "operator_directed";
+        case AdaptiveMutationSourceCategory::recovery: return "recovery";
+        case AdaptiveMutationSourceCategory::system_policy:
+            return "system_policy";
+        case AdaptiveMutationSourceCategory::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveMutationOperation value) noexcept {
+    switch (value) {
+        case AdaptiveMutationOperation::replace: return "replace";
+        case AdaptiveMutationOperation::add: return "add";
+        case AdaptiveMutationOperation::scale: return "scale";
+        case AdaptiveMutationOperation::bounded_adjust:
+            return "bounded_adjust";
+        case AdaptiveMutationOperation::unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveAuthorityDecision value) noexcept {
+    switch (value) {
+        case AdaptiveAuthorityDecision::unknown: return "unknown";
+        case AdaptiveAuthorityDecision::authorized: return "authorized";
+        case AdaptiveAuthorityDecision::denied: return "denied";
+    }
+    return "unknown";
+}
+
+const char* to_string(AdaptiveMutationValidationCode value) noexcept {
+    switch (value) {
+        case AdaptiveMutationValidationCode::accepted: return "accepted";
+        case AdaptiveMutationValidationCode::rejected: return "rejected";
+        case AdaptiveMutationValidationCode::deferred: return "deferred";
+        case AdaptiveMutationValidationCode::not_found: return "not_found";
+        case AdaptiveMutationValidationCode::version_conflict:
+            return "version_conflict";
+        case AdaptiveMutationValidationCode::type_mismatch:
+            return "type_mismatch";
+        case AdaptiveMutationValidationCode::shape_mismatch:
+            return "shape_mismatch";
+        case AdaptiveMutationValidationCode::out_of_bounds:
+            return "out_of_bounds";
+        case AdaptiveMutationValidationCode::soft_bound_violation:
+            return "soft_bound_violation";
+        case AdaptiveMutationValidationCode::magnitude_exceeded:
+            return "magnitude_exceeded";
+        case AdaptiveMutationValidationCode::arithmetic_overflow:
+            return "arithmetic_overflow";
+        case AdaptiveMutationValidationCode::authority_denied:
+            return "authority_denied";
+        case AdaptiveMutationValidationCode::disabled: return "disabled";
+        case AdaptiveMutationValidationCode::rate_limited:
+            return "rate_limited";
+        case AdaptiveMutationValidationCode::resource_exhausted:
+            return "resource_exhausted";
+        case AdaptiveMutationValidationCode::duplicate: return "duplicate";
+        case AdaptiveMutationValidationCode::invalid_proposal:
+            return "invalid_proposal";
+        case AdaptiveMutationValidationCode::incompatible_rollback:
+            return "incompatible_rollback";
+        case AdaptiveMutationValidationCode::unknown: return "unknown";
     }
     return "unknown";
 }
