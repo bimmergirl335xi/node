@@ -55,8 +55,8 @@ The following separations are foundational:
 | [MEM-0000](MEM-0000-charter.md) | Memory Architecture Charter | Draft |
 | [MEM-0001](MEM-0001-core-principles.md) | Core Principles and Invariants | Draft |
 | [MEM-0002](MEM-0002-memory-roles.md) | Memory Service Roles and Boundaries | Draft |
-| [MEM-0003](MEM-0003-identity-and-versioning.md) | Logical Identity, Provenance, and Versioning | Planned |
-| [MEM-0004](MEM-0004-operation-contracts.md) | Memory Operation Contracts | Planned |
+| [MEM-0003](MEM-0003-identity-and-versioning.md) | Logical Identity, Provenance, and Versioning | Draft |
+| [MEM-0004](MEM-0004-operation-contracts.md) | Memory Operation Contracts | Draft |
 | [MEM-0005](MEM-0005-availability-and-consistency.md) | Availability, Completeness, and Consistency | Planned |
 | [MEM-0006](MEM-0006-retention-and-lifecycle.md) | Retention and Memory Lifecycle | Planned |
 | [MEM-0007](MEM-0007-distributed-custody.md) | Distributed Custody and Locality | Planned |
