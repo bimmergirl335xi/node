@@ -130,8 +130,27 @@ namespace {
     pc::ArchitectureLimits invalid_limits{};
     invalid_limits.maximum_components = 0;
     pc::ArchitectureGraph invalid_graph{invalid_limits};
-    return invalid_graph.register_component(component("blocked")).code ==
-           pc::ArchitectureRegistrationCode::invalid_configuration;
+    if (invalid_graph.register_component(component("blocked")).code !=
+        pc::ArchitectureRegistrationCode::invalid_configuration) {
+        return false;
+    }
+
+    pc::ArchitectureLimits edge_limits{};
+    edge_limits.maximum_edges = 1;
+    pc::ArchitectureGraph edge_bounded{edge_limits};
+    return edge_bounded.register_component(component("edge.component.a")).ok() &&
+           edge_bounded.register_component(component("edge.component.b")).ok() &&
+           edge_bounded.register_component(component("edge.component.c")).ok() &&
+           edge_bounded
+               .register_edge(edge(
+                   "edge.bound.first", "edge.component.a", "edge.component.b"))
+               .ok() &&
+           edge_bounded
+                   .register_edge(edge(
+                       "edge.bound.second",
+                       "edge.component.a",
+                       "edge.component.c"))
+                   .code == pc::ArchitectureRegistrationCode::capacity_exhausted;
 }
 
 [[nodiscard]] bool test_missing_self_cycle_and_type_validation() {

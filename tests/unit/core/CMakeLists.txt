@@ -61,3 +61,19 @@ add_test(
     NAME prometheus_architecture_graph
     COMMAND test_architecture_graph
 )
+
+add_executable(test_architecture_shadow
+    test_architecture_shadow.cpp
+)
+
+target_link_libraries(test_architecture_shadow
+    PRIVATE
+        prometheus_runtime_core
+)
+
+target_compile_features(test_architecture_shadow PRIVATE cxx_std_17)
+
+add_test(
+    NAME prometheus_architecture_shadow
+    COMMAND test_architecture_shadow
+)

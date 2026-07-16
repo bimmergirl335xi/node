@@ -366,6 +366,9 @@ ArchitectureGraphSnapshot ArchitectureGraph::snapshot() const {
             component.resource_requirement.operation_adapters.begin(),
             component.resource_requirement.operation_adapters.end());
         std::sort(
+            component.resource_requirement.allowed_backend_kinds.begin(),
+            component.resource_requirement.allowed_backend_kinds.end());
+        std::sort(
             component.memory_contract_references.begin(),
             component.memory_contract_references.end());
         std::sort(
