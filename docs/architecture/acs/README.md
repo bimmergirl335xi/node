@@ -22,8 +22,8 @@ Lower-numbered specifications carry broader architectural authority. Later speci
 | [ACS-0001](ACS-0001-core-principles.md) | Core Principles and Invariants | Draft |
 | [ACS-0002](ACS-0002-relationship-classes.md) | Relationship Classes | Draft |
 | [ACS-0003](ACS-0003-signal-taxonomy.md) | Signal Taxonomy | Draft |
-| ACS-0004 | Endpoints and Ports | Planned |
-| ACS-0005 | Connection Lifecycle | Planned |
+| [ACS-0004](ACS-0004-endpoints-and-ports.md) | Endpoints and Ports | Draft |
+| [ACS-0005](ACS-0005-connection-lifecycle.md) | Connection Lifecycle | Draft |
 | ACS-0006 | Admission and Budgets | Planned |
 | ACS-0007 | Security and Trust | Planned |
 | ACS-0008 | Immune Integration | Planned |
