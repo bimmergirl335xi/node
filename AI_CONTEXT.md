@@ -5,9 +5,9 @@
 > Detailed phase history belongs in `docs/CURRENT_STATE.md`, architecture
 > specifications, pull requests, and Git history.
 >
-> Last reconciled: 2026-07-15.
-> The same context file is maintained on the active development branches.
-> Use the branch map below before assuming that branch-local code is merged.
+> Last reconciled: 2026-07-17 through RC-001/I-002.
+> This file describes the integrated repository line and the deliberate work
+> retained beyond it on active lanes.
 
 ## Project
 
@@ -58,9 +58,8 @@ changing existing robot behavior.
   human-readable local output.
 - Local terminal output is optional diagnostic behavior. Long-term operator
   interaction is expected through the Pocket Decoder/Lens.
-- Olivia is currently the only authorized operator. Destructive provisioning,
-  production activation, trust expansion, and propagation require explicit
-  authorization.
+- Destructive provisioning, production activation, trust expansion, and
+  propagation require explicit operator authorization.
 - Placeholder files are not implemented components.
 - Use named build directories. Do not destructively clear shared build trees.
 - Branch-local implementation remains branch-local until deliberately
@@ -73,12 +72,10 @@ The Adaptive Connection Substrate (ACS) is the architectural foundation for
 relationships and connections between nodes, services, cognitive structures,
 hardware resources, and future mesh participants.
 
-The specification set currently contains:
-
-- ACS-0000: charter and specification framework;
-- ACS-0001: core principles and twenty mandatory invariants;
-- ACS-0002: relationship classes working draft;
-- ACS-0003: signal taxonomy working draft.
+The public Draft specification set contains ACS-0000 through ACS-0009,
+covering the charter, invariants, relationship classes, signal taxonomy,
+endpoints and ports, connection lifecycle, admission and budgets, security and
+trust, immune integration, and runtime integration.
 
 The ACS rules include these boundaries:
 
@@ -108,28 +105,36 @@ The ACS rules include these boundaries:
   bounded, authorized, auditable, interruptible, and reversible where
   technically possible.
 
-ACS is currently specification work. Do not treat the placeholder mesh and
-connection source files as an implemented runtime substrate.
+ACS is currently specification work. ACS-I001 has not been implemented. Do not
+treat placeholder mesh and connection files, the service lifecycle foundation,
+or architecture shadow evaluation as an implemented ACS runtime substrate.
+
+## Memory, Immune, and Bootstrap Boundaries
+
+- The public MEM Draft series contains MEM-0000 through MEM-0010. It defines
+  memory identity, roles, operations, availability, lifecycle, custody,
+  recovery, ACS integration, and conformance. No MEM persistence runtime is
+  implemented.
+- The public IMM Draft series contains IMM-0000 and IMM-0001. It defines the
+  public charter and invariants while explicitly excluding private threat
+  models, heuristics, thresholds, production response policy, credentials, and
+  topology. No IMM implementation is present.
+- Public BOOT documents are not committed in this repository state. Bootstrap
+  implementation remains owned by `lane/bootstrap`; RC-001 did not create that
+  lane or add bootstrap code.
+- ACS retains communication authority, MEM retains memory semantics, IMM may
+  assess and request bounded action, adaptive state retains mutation semantics,
+  and runtime code only executes authority granted by the owning domain.
 
 ## Platform Context
 
 ### Hardware
 
-- Validation host: `curiosity`
-- Validation GPUs: 2 × Quadro RTX 4000, Turing, compute capability 7.5
-- Edge vision target: P106-100, Pascal, normally compute capability 6.1
-- Main server: 10 × Tesla V100 32 GB, Volta, compute capability 7.0
-- Compatibility case: Quadro K6000, Kepler
-- CPU targets: x86 Xeon, generic ARM, and future heterogeneous CPU systems
-- Other targets: ten unidentified-family Xeon Phi devices, Raspberry Pi, Hailo,
-  IMX500, and future AMD GPUs
-
-Current validation GPU identities:
-
-```text
-GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b  PCI 0000:2d:00.0
-GPU-4ced1003-8696-6957-d524-1539252d8c8d  PCI 0000:2e:00.0
-```
+- Validation profiles include Pascal 6.1, Volta 7.0, and Turing 7.5 CUDA
+  targets plus a legacy Kepler compatibility case.
+- CPU targets include x86, generic ARM, and future heterogeneous CPU systems.
+- Optional accelerator profiles include Hailo, IMX500, Xeon Phi, and future AMD
+  GPUs without assuming that any is present on a generic node.
 
 Persistent CUDA keys use `cuda:<GPU-UUID>`. Runtime ordinals are rebound to UUIDs
 at startup.
@@ -137,7 +142,7 @@ at startup.
 ### CUDA Policy
 
 - Current validation toolkit/runtime/driver family: CUDA 12.4
-- Compiler build observed on `curiosity`: 12.4.131
+- Compiler build observed on the validation workstation: 12.4.131
 - CUDA 12 family retains Pascal, Volta, Turing, and newer explicitly compiled
   targets.
 - CUDA 13 family supports Turing and newer targets.
@@ -219,6 +224,26 @@ Implemented:
 The Phase 7.1 planner is advisory. It does not create workers, change affinity,
 reserve production memory, dispatch neural work, or redirect robot execution.
 
+### Runtime and Adaptive-State Foundations — B-001, S-001, and A-001
+
+Integrated through I-002:
+
+- service lifecycle composition with callbacks outside the service-manager
+  lock and an explicitly borrowed backend registry in `ServiceContext`;
+- pure backend-neutral execution-policy metadata evaluation;
+- dynamically loaded, bounded NVRTC readiness without artifact execution or
+  promotion;
+- typed adaptive-state descriptors, validation, authority separation, atomic
+  transactions, and rollback;
+- typed bounded architecture graphs and proposal operations;
+- isolated shadow application, structural validation, advisory impact evidence,
+  and explicit unknown/resource/adapter/authority outcomes;
+- a versioned bounded C ABI for proposal validation with caller-owned buffers,
+  size queries, fixed-width types, and exception containment.
+
+Live architecture application, service reconfiguration, MEM persistence, ACS
+runtime behavior, Julia embedding, and generated CUDA execution remain absent.
+
 ## Active Branch Map
 
 ### `main`
@@ -230,8 +255,10 @@ Current integrated line. It contains:
 - the bounded single-group CPU thread pool and conservative SIMD selector;
 - generic ARM Linux auxiliary-vector and processor-identity discovery;
 - the first Hailo accelerator-backend slice;
-- ACS-0000 through ACS-0003;
-- ACS-0001 version 0.2 with twenty invariants.
+- B-001, S-001, A-001, and their I-002 reconciliation merge;
+- ACS-0000 through ACS-0009;
+- MEM-0000 through MEM-0010;
+- IMM-0000 and IMM-0001.
 
 The integrated CPU thread pool provides a fixed worker count, bounded weighted
 priority queue, explicit submission backpressure, task handles, queued
@@ -254,6 +281,23 @@ probe in this slice. No second ARM backend is registered.
 The integrated Hailo slice currently performs conservative host and visible
 device discovery. A visible device remains degraded and unusable until HailoRT
 integration proves runtime and model execution readiness.
+
+### `lane/runtime`
+
+Runtime implementation lane. RC-001 synchronizes it to final `main`; ACS-I001
+may begin only under a separate authorized checkpoint.
+
+### `lane/docs`
+
+Public architecture lane for additional IMM and future BOOT documentation. It
+contains no private immune or memory mechanisms and is synchronized to final
+`main` by RC-001.
+
+### `lane/cpu`
+
+CPU continuation lane. It retains one deliberate shutdown-observability commit
+beyond `main`. That work is not integrated into `main`; timed shutdown waiting,
+execution-group orchestration, and affinity work remain deferred.
 
 ### `agent/open-source-source-tree`
 
@@ -278,8 +322,12 @@ The integrated slice does not implement affinity binding, NUMA-group
 orchestration, cross-group work stealing, typed CPU kernels, neural-current
 scheduling, or production dispatch.
 
-Checkpoint validation on `curiosity` passed all five focused CPU tests, 100
-repeated thread-pool runs, and the complete 17-test CTest suite.
+Checkpoint validation on the x86 validation workstation passed all five
+focused CPU tests, 100 repeated thread-pool runs, and the complete 17-test
+CTest suite.
+
+RC-001 classifies this pull request as a superseded historical input. It must be
+closed without merging after final validation; its branch must not be deleted.
 
 ### `agent/arm-a1-linux-auxv`
 
@@ -303,37 +351,42 @@ Checkpoint validation passed all three ARM CTests and the x86 not-applicable
 probe. Real AArch32, AArch64, heterogeneous ARM, and SVE/SVE2 hardware
 validation remain pending.
 
+RC-001 classifies this pull request as a superseded historical input. It must be
+closed without merging after final validation; its branch must not be deleted.
+
 ## Current Work and Next Boundaries
 
-Work is proceeding on several independent tracks:
+Next work remains lane- and checkpoint-specific:
 
-1. Continue Phase 7.2.1a CPU hardening before adding typed CPU operation
-   adapters, especially policy for running tasks that never return.
-2. Validate generic ARM discovery on real AArch32 and AArch64 Linux hardware,
-   including heterogeneous and SVE/SVE2 systems where available.
-3. Continue Hailo discovery toward dynamically loaded HailoRT integration,
-   explicit runtime state, stable device identity, health, capacity, and model
-   readiness without coupling it to generic ARM discovery.
-4. Continue ACS specification work by refining relationship classes, signal
-   semantics, lifecycle, admission, security, budgeting, health, and immune
-   integration before implementing the runtime substrate.
+1. `lane/runtime` may begin ACS-I001 only after RC-001 is complete and under its
+   own implementation checkpoint.
+2. `lane/docs` may continue independently authored public IMM work and may add
+   public BOOT architecture when separately authorized.
+3. `lane/cpu` may complete shutdown observability without merging that partial
+   work into `main` prematurely.
+4. Generic ARM discovery still requires real AArch32/AArch64 and SVE/SVE2
+   hardware validation.
 
 Explicitly not yet complete:
 
 - CPU affinity binding and NUMA-group worker orchestration;
+- timed waiting for CPU-pool shutdown completion;
 - bounded cross-group work stealing;
 - typed CPU kernel adapters and CPU reference operations;
 - CPU kernel registry and production CPU dispatch;
 - HailoRT loading, Hailo model execution, or production accelerator dispatch;
 - IMX500 backend integration;
 - ACS runtime connection and relationship implementation;
+- MEM persistence and IMM implementation;
+- public BOOT architecture and bootstrap implementation;
+- live architecture proposal application or service-graph reconfiguration;
 - neural scheduling, storage, and whole-mesh production dispatch;
 - robot-path migration away from `legacy/vision_swarm_11.cu`.
 
 ## Build and Validation Rules
 
 - Use named build directories.
-- On the 16 GiB `curiosity` workstation, build serially:
+- On the 16 GiB validation workstation, build serially:
 
   ```text
   cmake --build <named-build-directory> --parallel 1
@@ -358,8 +411,8 @@ collection, ordinary validation, compiler or linker correction, and focused
 debugging do not consume a slot.
 
 At phase close, update `AI_CONTEXT.md` and `docs/CURRENT_STATE.md`. Documentation
-changes are normally append-only addenda unless Olivia explicitly requests a
-reconciliation or rewrite.
+changes are normally append-only addenda unless the authorized operator
+explicitly requests a reconciliation or rewrite.
 
 Handoffs must preserve architecture decisions, completed work, validation,
 limitations, unfinished placeholders, exact commands, required files, and a
