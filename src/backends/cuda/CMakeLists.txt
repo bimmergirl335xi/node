@@ -1,3 +1,24 @@
+add_library(prometheus_cuda_runtime_compilation STATIC
+    cuda_runtime_compilation.cpp
+)
+
+target_include_directories(prometheus_cuda_runtime_compilation
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/src/backends
+        ${PROJECT_SOURCE_DIR}/src/backends/cuda
+)
+
+target_link_libraries(prometheus_cuda_runtime_compilation
+    PRIVATE
+        Threads::Threads
+)
+
+target_compile_features(
+    prometheus_cuda_runtime_compilation
+    PUBLIC
+        cxx_std_17
+)
+
 add_library(prometheus_cuda_backend STATIC
     cuda_backend.cu
     cuda_capabilities.cu

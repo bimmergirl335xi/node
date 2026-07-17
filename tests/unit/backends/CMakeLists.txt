@@ -110,6 +110,29 @@ add_test(
     COMMAND test_cuda_runtime_resources
 )
 
+if(NOT TARGET prometheus_cuda_runtime_compilation)
+    message(
+        FATAL_ERROR
+        "prometheus_cuda_runtime_compilation target is unavailable"
+    )
+endif()
+
+add_executable(test_cuda_runtime_compilation
+    test_cuda_runtime_compilation.cpp
+)
+
+target_link_libraries(test_cuda_runtime_compilation
+    PRIVATE
+        prometheus_cuda_runtime_compilation
+)
+
+target_compile_features(test_cuda_runtime_compilation PRIVATE cxx_std_17)
+
+add_test(
+    NAME prometheus_cuda_runtime_compilation
+    COMMAND test_cuda_runtime_compilation
+)
+
 
 add_executable(test_cpu_health_capacity
     test_cpu_health_capacity.cpp
