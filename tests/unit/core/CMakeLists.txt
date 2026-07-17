@@ -103,3 +103,13 @@ add_executable(test_acs_registry test_acs_registry.cpp)
 target_link_libraries(test_acs_registry PRIVATE prometheus_acs)
 target_compile_features(test_acs_registry PRIVATE cxx_std_17)
 add_test(NAME prometheus_acs_registry COMMAND test_acs_registry)
+
+add_executable(test_acs_lifecycle test_acs_lifecycle.cpp)
+target_link_libraries(test_acs_lifecycle PRIVATE prometheus_acs)
+target_compile_features(test_acs_lifecycle PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_lifecycle COMMAND test_acs_lifecycle)
+
+add_executable(test_acs_concurrency test_acs_concurrency.cpp)
+target_link_libraries(test_acs_concurrency PRIVATE prometheus_acs)
+target_compile_features(test_acs_concurrency PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_concurrency COMMAND test_acs_concurrency)
