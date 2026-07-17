@@ -61,8 +61,8 @@ The following separations are foundational:
 | [MEM-0006](MEM-0006-retention-and-lifecycle.md) | Retention and Memory Lifecycle | Draft |
 | [MEM-0007](MEM-0007-distributed-custody.md) | Distributed Custody and Locality | Draft |
 | [MEM-0008](MEM-0008-recovery-and-reconstruction.md) | Recovery, Repair, and Reconstruction | Draft |
-| [MEM-0009](MEM-0009-acs-integration.md) | ACS Integration | Planned |
-| [MEM-0010](MEM-0010-conformance.md) | Conformance and Failure Validation | Planned |
+| [MEM-0009](MEM-0009-acs-integration.md) | ACS Integration | Draft |
+| [MEM-0010](MEM-0010-conformance.md) | Conformance and Failure Validation | Draft |
 
 ## Document status
 
