@@ -47,7 +47,7 @@ bool listed(const std::vector<CapabilityId>& values, const CapabilityId& id) {
 }
 }  // namespace
 
-AcsAdmissionResult evaluate_admission(
+AcsAdmissionResult evaluate_admission_impl(
     const AcsRegistrySnapshot& registry, const AcsAdmissionRequest& request) {
     AcsAdmissionResult result{};
     result.outcome = AcsAdmissionOutcome::admitted;
@@ -216,5 +216,17 @@ AcsAdmissionResult evaluate_admission(
         else if (required > budget.available) issue(result, request, AcsAdmissionOutcome::deferred, AcsAdmissionIssueCode::budget_insufficient, budget.dimension.value, "budget insufficient");
     }
     return result;
+}
+
+AcsAdmissionResult evaluate_admission(
+    const AcsRegistrySnapshot& registry, const AcsAdmissionRequest& request) noexcept {
+    try {
+        return evaluate_admission_impl(registry, request);
+    } catch (...) {
+        AcsAdmissionResult result{};
+        result.outcome = AcsAdmissionOutcome::unavailable;
+        result.issues_truncated = true;
+        return result;
+    }
 }
 }  // namespace prometheus::core::acs

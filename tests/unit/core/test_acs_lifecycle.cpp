@@ -1,4 +1,6 @@
 #include <cstdlib>
+#include <type_traits>
+#include <utility>
 
 #include "acs_test_fixture.hpp"
 #include "core/acs/acs_lifecycle.hpp"
@@ -9,6 +11,12 @@ template <typename Id>
 Id tid(const char* value) { return *Id::parse("transition", value); }
 
 int main() {
+    static_assert(noexcept(std::declval<acs::ConnectionStateStore&>().transition_lifecycle(
+        std::declval<const acs::LifecycleTransitionRequest&>())));
+    static_assert(noexcept(std::declval<acs::ConnectionStateStore&>().transition_operational(
+        std::declval<const acs::OperationalTransitionRequest&>())));
+    static_assert(noexcept(std::declval<acs::ConnectionStateStore&>().transition_enforcement(
+        std::declval<const acs::EnforcementTransitionRequest&>())));
     acs::AcsRegistry registry{}; acs_test::FixtureIds ids{};
     if (!acs_test::populate(registry, ids)) return EXIT_FAILURE;
     acs::StateStoreOptions options{}; options.maximum_history_per_connection = 3; options.maximum_idempotency_records = 2;
@@ -19,8 +27,15 @@ int main() {
     if (!store.transition_lifecycle(lifecycle).replayed) return EXIT_FAILURE;
     lifecycle.desired = acs::ConnectionLifecycle::failed;
     if (store.transition_lifecycle(lifecycle).code != acs::TransitionCode::transition_identity_conflict) return EXIT_FAILURE;
+    const auto before_invalid = store.find(ids.connection);
     lifecycle.transition_id = tid<acs::TransitionId>("illegal"); lifecycle.desired = acs::ConnectionLifecycle::active; lifecycle.expected_revision = acs::LifecycleRevision{1};
     if (store.transition_lifecycle(lifecycle).code != acs::TransitionCode::invalid_transition) return EXIT_FAILURE;
+    const auto after_invalid = store.find(ids.connection);
+    if (!before_invalid || !after_invalid ||
+        before_invalid->state_generation != after_invalid->state_generation ||
+        before_invalid->lifecycle_revision != after_invalid->lifecycle_revision ||
+        before_invalid->lifecycle != after_invalid->lifecycle ||
+        before_invalid->history.size() != after_invalid->history.size()) return EXIT_FAILURE;
     lifecycle.transition_id = tid<acs::TransitionId>("pending"); lifecycle.desired = acs::ConnectionLifecycle::admission_pending;
     if (!store.transition_lifecycle(lifecycle).ok()) return EXIT_FAILURE;
 

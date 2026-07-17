@@ -4,6 +4,7 @@
 #include <exception>
 #include <limits>
 #include <sstream>
+#include <type_traits>
 #include <utility>
 
 namespace prometheus::core::acs {
@@ -62,10 +63,24 @@ std::string fingerprint(const OperationalTransitionRequest& r) {
 std::string fingerprint(const EnforcementTransitionRequest& r) {
     return "e|" + r.connection_id.canonical() + "|" + std::to_string(r.expected_revision.value()) + "|" + std::to_string(static_cast<unsigned>(r.desired)) + "|" + r.subject.canonical() + "|" + r.scope.value + "|" + r.authority.canonical() + "|" + (r.capability ? r.capability->canonical() : "-") + "|" + (r.admission_reference ? r.admission_reference->canonical() : "-") + "|" + (r.containment_authorization ? r.containment_authorization->canonical() : "-") + "|" + (r.restoration_clearance ? r.restoration_clearance->canonical() : "-");
 }
+
+TransitionResult resource_failure() noexcept {
+    TransitionResult result{};
+    result.code = TransitionCode::resource_exhausted;
+    return result;
+}
 }  // namespace
 
 ConnectionStateStore::ConnectionStateStore(const AcsRegistry& registry, StateStoreOptions options)
-    : registry_(&registry), options_(std::move(options)), options_valid_(valid_options(options_)) {}
+    : registry_(&registry), options_(std::move(options)), options_valid_(valid_options(options_)) {
+    if (!options_valid_) return;
+    try {
+        records_.reserve(options_.maximum_connections);
+        idempotency_.reserve(options_.maximum_idempotency_records);
+    } catch (...) {
+        options_valid_ = false;
+    }
+}
 
 ConnectionStateStore::~ConnectionStateStore() = default;
 
@@ -89,55 +104,87 @@ std::optional<TransitionResult> ConnectionStateStore::replay_or_conflict(
     return std::nullopt;
 }
 
-void ConnectionStateStore::retain_idempotency(
-    TransitionId id, std::string value, const TransitionResult& result) {
-    if (idempotency_.size() == options_.maximum_idempotency_records) {
-        idempotency_.erase(idempotency_.begin());
-        ++idempotency_horizon_;
+TransitionResult ConnectionStateStore::commit_transition(
+    ConnectionStateSnapshot state, TransitionId transition_id,
+    std::string value, bool new_record) {
+    static_assert(std::is_nothrow_move_constructible_v<Record>);
+    static_assert(std::is_nothrow_move_assignable_v<ConnectionStateSnapshot>);
+    static_assert(std::is_nothrow_move_constructible_v<IdempotencyRecord>);
+    static_assert(std::is_nothrow_move_assignable_v<IdempotencyRecord>);
+
+    const bool evict = idempotency_.size() == options_.maximum_idempotency_records;
+    if (evict && idempotency_horizon_ == std::numeric_limits<std::uint64_t>::max())
+        return failure(TransitionCode::revision_overflow, "idempotency horizon overflow");
+    const auto next_horizon = evict ? idempotency_horizon_ + 1 : idempotency_horizon_;
+    state.retained_idempotency_horizon = next_horizon;
+
+    TransitionResult result{};
+    result.state = state;
+    IdempotencyRecord retained{std::move(transition_id), std::move(value), result};
+
+    if (new_record) {
+        records_.push_back({std::move(state)});
+    } else {
+        const auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) {
+            return record.state.connection_id == state.connection_id;
+        });
+        found->state = std::move(state);
     }
-    idempotency_.push_back({std::move(id), std::move(value), result});
+    if (evict) idempotency_.erase(idempotency_.begin());
+    idempotency_.push_back(std::move(retained));
+    idempotency_horizon_ = next_horizon;
+    state_generation_ = result.state.state_generation;
+    return result;
 }
 
-TransitionResult ConnectionStateStore::transition_lifecycle(const LifecycleTransitionRequest& request) {
+TransitionResult ConnectionStateStore::transition_lifecycle(const LifecycleTransitionRequest& request) noexcept {
+    try {
     if (!options_valid_) return failure(TransitionCode::invalid_configuration, "invalid state-store options");
     if (!request.transition_id.valid() || !request.connection_id.valid()) return failure(TransitionCode::invalid_request, "invalid transition request");
     if (!registry_->contains_connection(request.connection_id)) return failure(TransitionCode::connection_not_found, "connection not registered");
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto fp = fingerprint(request);
     if (auto replay = replay_or_conflict(request.transition_id, fp, request.known_idempotency_horizon)) return *replay;
-    auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
-    if (found == records_.end()) {
-        if (records_.size() >= options_.maximum_connections) return failure(TransitionCode::capacity_exhausted, "state capacity exhausted");
-        records_.push_back({ConnectionStateSnapshot{request.connection_id}}); found = std::prev(records_.end());
-    }
-    auto& state = found->state;
+    const auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
+    const bool new_record = found == records_.end();
+    if (new_record && records_.size() >= options_.maximum_connections) return failure(TransitionCode::capacity_exhausted, "state capacity exhausted");
+    ConnectionStateSnapshot state = new_record ? ConnectionStateSnapshot{request.connection_id} : found->state;
     if (state.lifecycle_revision != request.expected_revision) return failure(TransitionCode::revision_conflict, "lifecycle revision conflict");
     if (!lifecycle_allowed(state.lifecycle, request.desired)) return failure(TransitionCode::invalid_transition, "illegal lifecycle transition");
     const auto next = state.lifecycle_revision.next();
     if (!next || state_generation_ == std::numeric_limits<std::uint64_t>::max()) return failure(TransitionCode::revision_overflow, "lifecycle revision overflow");
-    const auto before = state.lifecycle; state.lifecycle = request.desired; state.lifecycle_revision = *next; ++state_generation_; state.state_generation = state_generation_;
+    const auto before = state.lifecycle; state.lifecycle = request.desired; state.lifecycle_revision = *next; state.state_generation = state_generation_ + 1;
+    state.history.reserve(options_.maximum_history_per_connection);
     if (state.history.size() == options_.maximum_history_per_connection) state.history.erase(state.history.begin());
     state.history.push_back({request.transition_id, StateDimension::lifecycle, static_cast<std::uint8_t>(before), static_cast<std::uint8_t>(request.desired), next->value()});
-    state.retained_idempotency_horizon = idempotency_horizon_;
-    TransitionResult result{}; result.state = state; retain_idempotency(request.transition_id, fp, result); return result;
+    return commit_transition(std::move(state), request.transition_id, fp, new_record);
+    } catch (...) {
+        return resource_failure();
+    }
 }
 
-TransitionResult ConnectionStateStore::transition_operational(const OperationalTransitionRequest& request) {
+TransitionResult ConnectionStateStore::transition_operational(const OperationalTransitionRequest& request) noexcept {
+    try {
     if (!options_valid_ || !request.transition_id.valid() || !request.connection_id.valid()) return failure(TransitionCode::invalid_request, "invalid operational request");
     if (!registry_->contains_connection(request.connection_id)) return failure(TransitionCode::connection_not_found, "connection not registered");
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto fp = fingerprint(request); if (auto replay = replay_or_conflict(request.transition_id, fp, request.known_idempotency_horizon)) return *replay;
-    auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
+    const auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
     if (found == records_.end() || found->state.operational_revision != request.expected_revision) return failure(TransitionCode::revision_conflict, "operational revision conflict");
-    auto& state = found->state; if (!operational_allowed(state.operational, request.desired)) return failure(TransitionCode::invalid_transition, "illegal operational transition");
+    ConnectionStateSnapshot state = found->state; if (!operational_allowed(state.operational, request.desired)) return failure(TransitionCode::invalid_transition, "illegal operational transition");
     const auto next = state.operational_revision.next(); if (!next || state_generation_ == std::numeric_limits<std::uint64_t>::max()) return failure(TransitionCode::revision_overflow, "operational revision overflow");
-    const auto before = state.operational; state.operational = request.desired; state.operational_revision = *next; ++state_generation_; state.state_generation = state_generation_;
+    const auto before = state.operational; state.operational = request.desired; state.operational_revision = *next; state.state_generation = state_generation_ + 1;
+    state.history.reserve(options_.maximum_history_per_connection);
     if (state.history.size() == options_.maximum_history_per_connection) state.history.erase(state.history.begin());
     state.history.push_back({request.transition_id, StateDimension::operational, static_cast<std::uint8_t>(before), static_cast<std::uint8_t>(request.desired), next->value()});
-    state.retained_idempotency_horizon = idempotency_horizon_; TransitionResult result{}; result.state = state; retain_idempotency(request.transition_id, fp, result); return result;
+    return commit_transition(std::move(state), request.transition_id, fp, false);
+    } catch (...) {
+        return resource_failure();
+    }
 }
 
-TransitionResult ConnectionStateStore::transition_enforcement(const EnforcementTransitionRequest& request) {
+TransitionResult ConnectionStateStore::transition_enforcement(const EnforcementTransitionRequest& request) noexcept {
+    try {
     if (!options_valid_ || !request.transition_id.valid() || !request.connection_id.valid() || !request.subject.valid() || !request.scope.valid() || !request.authority.valid()) return failure(TransitionCode::invalid_request, "invalid enforcement request");
     const auto registry = registry_->snapshot();
     if (!locate(registry.connections, request.connection_id)) return failure(TransitionCode::connection_not_found, "connection not registered");
@@ -146,9 +193,9 @@ TransitionResult ConnectionStateStore::transition_enforcement(const EnforcementT
     const bool revoked = std::any_of(registry.revocations.begin(), registry.revocations.end(), [&](const auto& value) { return value.subject == request.subject && value.condition == AuthorityCondition::revoked; });
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto fp = fingerprint(request); if (auto replay = replay_or_conflict(request.transition_id, fp, request.known_idempotency_horizon)) return *replay;
-    auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
+    const auto found = std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.state.connection_id == request.connection_id; });
     if (found == records_.end() || found->state.enforcement_revision != request.expected_revision) return failure(TransitionCode::revision_conflict, "enforcement revision conflict");
-    auto& state = found->state; if (!enforcement_allowed(state.enforcement, request.desired)) return failure(TransitionCode::invalid_transition, "illegal enforcement transition");
+    ConnectionStateSnapshot state = found->state; if (!enforcement_allowed(state.enforcement, request.desired)) return failure(TransitionCode::invalid_transition, "illegal enforcement transition");
     if (request.desired != EnforcementCondition::revoked && revoked) return failure(TransitionCode::active_revocation, "active revocation prevents restoration");
     if (request.desired == EnforcementCondition::quarantined) {
         const auto* containment = request.containment_authorization ? locate(registry.containment_authorizations, *request.containment_authorization) : nullptr;
@@ -167,10 +214,14 @@ TransitionResult ConnectionStateStore::transition_enforcement(const EnforcementT
             return failure(TransitionCode::missing_reference, "current admission and capability references required");
     }
     const auto next = state.enforcement_revision.next(); if (!next || state_generation_ == std::numeric_limits<std::uint64_t>::max()) return failure(TransitionCode::revision_overflow, "enforcement revision overflow");
-    const auto before = state.enforcement; state.enforcement = request.desired; state.enforcement_revision = *next; ++state_generation_; state.state_generation = state_generation_;
+    const auto before = state.enforcement; state.enforcement = request.desired; state.enforcement_revision = *next; state.state_generation = state_generation_ + 1;
+    state.history.reserve(options_.maximum_history_per_connection);
     if (state.history.size() == options_.maximum_history_per_connection) state.history.erase(state.history.begin());
     state.history.push_back({request.transition_id, StateDimension::enforcement, static_cast<std::uint8_t>(before), static_cast<std::uint8_t>(request.desired), next->value()});
-    state.retained_idempotency_horizon = idempotency_horizon_; TransitionResult result{}; result.state = state; retain_idempotency(request.transition_id, fp, result); return result;
+    return commit_transition(std::move(state), request.transition_id, fp, false);
+    } catch (...) {
+        return resource_failure();
+    }
 }
 
 std::optional<ConnectionStateSnapshot> ConnectionStateStore::find(const ConnectionId& id) const {

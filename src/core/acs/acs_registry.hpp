@@ -171,19 +171,19 @@ public:
     AcsRegistry(const AcsRegistry&) = delete;
     AcsRegistry& operator=(const AcsRegistry&) = delete;
 
-    [[nodiscard]] RegistryResult register_participant(ParticipantDescriptor value);
-    [[nodiscard]] RegistryResult register_authority(AuthorityDescriptor value);
-    [[nodiscard]] RegistryResult register_capability(CapabilityDescriptor value);
-    [[nodiscard]] RegistryResult register_delegation(DelegationReference value);
-    [[nodiscard]] RegistryResult register_revocation(RevocationReference value);
-    [[nodiscard]] RegistryResult register_evidence(EvidenceReference value);
-    [[nodiscard]] RegistryResult register_restriction(RestrictionReference value);
-    [[nodiscard]] RegistryResult register_containment_authorization(ContainmentAuthorizationReference value);
-    [[nodiscard]] RegistryResult register_restoration_clearance(RestorationClearanceReference value);
-    [[nodiscard]] RegistryResult register_endpoint(EndpointDescriptor value);
-    [[nodiscard]] RegistryResult register_port(PortDescriptor value);
-    [[nodiscard]] RegistryResult register_relationship(RelationshipDescriptor value);
-    [[nodiscard]] RegistryResult register_connection(ConnectionDescriptor value);
+    [[nodiscard]] RegistryResult register_participant(ParticipantDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_authority(AuthorityDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_capability(CapabilityDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_delegation(DelegationReference value) noexcept;
+    [[nodiscard]] RegistryResult register_revocation(RevocationReference value) noexcept;
+    [[nodiscard]] RegistryResult register_evidence(EvidenceReference value) noexcept;
+    [[nodiscard]] RegistryResult register_restriction(RestrictionReference value) noexcept;
+    [[nodiscard]] RegistryResult register_containment_authorization(ContainmentAuthorizationReference value) noexcept;
+    [[nodiscard]] RegistryResult register_restoration_clearance(RestorationClearanceReference value) noexcept;
+    [[nodiscard]] RegistryResult register_endpoint(EndpointDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_port(PortDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_relationship(RelationshipDescriptor value) noexcept;
+    [[nodiscard]] RegistryResult register_connection(ConnectionDescriptor value) noexcept;
 
     [[nodiscard]] AcsRegistrySnapshot snapshot() const;
     [[nodiscard]] RegistryGeneration generation() const;

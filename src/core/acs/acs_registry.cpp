@@ -1,7 +1,6 @@
 #include "acs_registry.hpp"
 
 #include <algorithm>
-#include <exception>
 #include <mutex>
 #include <utility>
 
@@ -38,12 +37,19 @@ void sort_values(std::vector<T>& values) {
     });
 }
 
+RegistryResult resource_failure() noexcept {
+    RegistryResult result{};
+    result.code = RegistryCode::resource_exhausted;
+    return result;
+}
+
 }  // namespace
 
 AcsRegistry::AcsRegistry(RegistryOptions options)
     : options_(std::move(options)), options_valid_(valid_options(options_)) {}
 
 #define ACS_REGISTER_BEGIN(Value, Collection, Limit) \
+    try { \
     std::unique_lock<std::shared_mutex> lock(mutex_); \
     if (!options_valid_) return {RegistryCode::invalid_configuration, {}, "invalid registry options", generation_}; \
     const std::string identity = (Value).id.canonical(); \
@@ -54,53 +60,56 @@ AcsRegistry::AcsRegistry(RegistryOptions options)
 #define ACS_REGISTER_END(Value, Collection) \
     const auto next = generation_.next(); \
     if (!next) return {RegistryCode::generation_overflow, identity, "generation overflow", generation_}; \
-    try { data_.Collection.push_back(std::move(Value)); } \
-    catch (const std::exception&) { return {RegistryCode::resource_exhausted, identity, "allocation failed", generation_}; } \
+    RegistryResult result{RegistryCode::success, identity, {}, *next}; \
+    data_.Collection.push_back(std::move(Value)); \
     generation_ = *next; \
-    return {RegistryCode::success, identity, {}, generation_}
+    return result; \
+    } catch (...) { \
+        return resource_failure(); \
+    }
 
-RegistryResult AcsRegistry::register_participant(ParticipantDescriptor value) {
+RegistryResult AcsRegistry::register_participant(ParticipantDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, participants, options_.maximum_participants);
     if (value.revision.value() == 0) return {RegistryCode::invalid_descriptor, identity, "zero revision", generation_};
     ACS_REGISTER_END(value, participants);
 }
 
-RegistryResult AcsRegistry::register_authority(AuthorityDescriptor value) {
+RegistryResult AcsRegistry::register_authority(AuthorityDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, authorities, options_.maximum_authorities);
     if (!value.owner.valid() || !contains(data_.participants, value.owner) || !value.scope.valid() || value.revision.value() == 0)
         return {RegistryCode::missing_reference, identity, "invalid authority reference", generation_};
     ACS_REGISTER_END(value, authorities);
 }
 
-RegistryResult AcsRegistry::register_capability(CapabilityDescriptor value) {
+RegistryResult AcsRegistry::register_capability(CapabilityDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, capabilities, options_.maximum_capabilities);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.participants, value.subject) || !value.scope.valid() || value.revision.value() == 0)
         return {RegistryCode::missing_reference, identity, "invalid capability reference", generation_};
     ACS_REGISTER_END(value, capabilities);
 }
 
-RegistryResult AcsRegistry::register_delegation(DelegationReference value) {
+RegistryResult AcsRegistry::register_delegation(DelegationReference value) noexcept {
     ACS_REGISTER_BEGIN(value, delegations, options_.maximum_delegations);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.capabilities, value.capability) || !contains(data_.participants, value.delegate) || !value.scope.valid())
         return {RegistryCode::missing_reference, identity, "invalid delegation reference", generation_};
     ACS_REGISTER_END(value, delegations);
 }
 
-RegistryResult AcsRegistry::register_revocation(RevocationReference value) {
+RegistryResult AcsRegistry::register_revocation(RevocationReference value) noexcept {
     ACS_REGISTER_BEGIN(value, revocations, options_.maximum_revocations);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.capabilities, value.capability) || !contains(data_.participants, value.subject) || !value.scope.valid())
         return {RegistryCode::missing_reference, identity, "invalid revocation reference", generation_};
     ACS_REGISTER_END(value, revocations);
 }
 
-RegistryResult AcsRegistry::register_evidence(EvidenceReference value) {
+RegistryResult AcsRegistry::register_evidence(EvidenceReference value) noexcept {
     ACS_REGISTER_BEGIN(value, evidence, options_.maximum_evidence);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.participants, value.subject) || !value.scope.valid())
         return {RegistryCode::missing_reference, identity, "invalid evidence reference", generation_};
     ACS_REGISTER_END(value, evidence);
 }
 
-RegistryResult AcsRegistry::register_restriction(RestrictionReference value) {
+RegistryResult AcsRegistry::register_restriction(RestrictionReference value) noexcept {
     ACS_REGISTER_BEGIN(value, restrictions, options_.maximum_evidence);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.participants, value.subject) || !value.scope.valid() || value.evidence.size() > options_.maximum_evidence_references)
         return {RegistryCode::missing_reference, identity, "invalid restriction reference", generation_};
@@ -109,14 +118,14 @@ RegistryResult AcsRegistry::register_restriction(RestrictionReference value) {
     ACS_REGISTER_END(value, restrictions);
 }
 
-RegistryResult AcsRegistry::register_containment_authorization(ContainmentAuthorizationReference value) {
+RegistryResult AcsRegistry::register_containment_authorization(ContainmentAuthorizationReference value) noexcept {
     ACS_REGISTER_BEGIN(value, containment_authorizations, options_.maximum_authorities);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.participants, value.subject) || !value.scope.valid())
         return {RegistryCode::missing_reference, identity, "invalid containment authorization", generation_};
     ACS_REGISTER_END(value, containment_authorizations);
 }
 
-RegistryResult AcsRegistry::register_restoration_clearance(RestorationClearanceReference value) {
+RegistryResult AcsRegistry::register_restoration_clearance(RestorationClearanceReference value) noexcept {
     ACS_REGISTER_BEGIN(value, restoration_clearances, options_.maximum_evidence);
     if (!contains(data_.authorities, value.issuer) || !contains(data_.participants, value.subject) || !value.scope.valid() || value.evidence.size() > options_.maximum_evidence_references)
         return {RegistryCode::missing_reference, identity, "invalid restoration clearance", generation_};
@@ -125,14 +134,15 @@ RegistryResult AcsRegistry::register_restoration_clearance(RestorationClearanceR
     ACS_REGISTER_END(value, restoration_clearances);
 }
 
-RegistryResult AcsRegistry::register_endpoint(EndpointDescriptor value) {
+RegistryResult AcsRegistry::register_endpoint(EndpointDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, endpoints, options_.maximum_endpoints);
     if (!contains(data_.participants, value.owner) || value.revision.value() == 0)
         return {RegistryCode::missing_reference, identity, "missing endpoint owner", generation_};
     ACS_REGISTER_END(value, endpoints);
 }
 
-RegistryResult AcsRegistry::register_port(PortDescriptor value) {
+RegistryResult AcsRegistry::register_port(PortDescriptor value) noexcept {
+    try {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     if (!options_valid_) return {RegistryCode::invalid_configuration, {}, "invalid registry options", generation_};
     const std::string identity = value.id.canonical();
@@ -154,14 +164,16 @@ RegistryResult AcsRegistry::register_port(PortDescriptor value) {
         return {RegistryCode::invalid_descriptor, identity, "invalid budget", generation_};
     const auto next = generation_.next();
     if (!next) return {RegistryCode::generation_overflow, identity, "generation overflow", generation_};
-    try { data_.ports.push_back(std::move(value)); } catch (const std::exception&) {
-        return {RegistryCode::resource_exhausted, identity, "allocation failed", generation_};
-    }
+    RegistryResult result{RegistryCode::success, identity, {}, *next};
+    data_.ports.push_back(std::move(value));
     generation_ = *next;
-    return {RegistryCode::success, identity, {}, generation_};
+    return result;
+    } catch (...) {
+        return resource_failure();
+    }
 }
 
-RegistryResult AcsRegistry::register_relationship(RelationshipDescriptor value) {
+RegistryResult AcsRegistry::register_relationship(RelationshipDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, relationships, options_.maximum_relationships);
     if (!contains(data_.participants, value.first) || !contains(data_.participants, value.second) ||
         value.first == value.second || value.relationship_class == RelationshipClass::unknown || value.revision.value() == 0)
@@ -169,7 +181,7 @@ RegistryResult AcsRegistry::register_relationship(RelationshipDescriptor value) 
     ACS_REGISTER_END(value, relationships);
 }
 
-RegistryResult AcsRegistry::register_connection(ConnectionDescriptor value) {
+RegistryResult AcsRegistry::register_connection(ConnectionDescriptor value) noexcept {
     ACS_REGISTER_BEGIN(value, connections, options_.maximum_connections);
     if (!contains(data_.relationships, value.relationship) || !contains(data_.endpoints, value.source_endpoint) ||
         !contains(data_.endpoints, value.target_endpoint) || !contains(data_.ports, value.source_port) ||

@@ -116,7 +116,7 @@ struct AcsAdmissionResult {
 // mutation, provider call, authentication, discovery, or transport action.
 [[nodiscard]] AcsAdmissionResult evaluate_admission(
     const AcsRegistrySnapshot& registry,
-    const AcsAdmissionRequest& request);
+    const AcsAdmissionRequest& request) noexcept;
 
 }  // namespace prometheus::core::acs
 #endif

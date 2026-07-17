@@ -103,9 +103,9 @@ public:
     ConnectionStateStore(const ConnectionStateStore&) = delete;
     ConnectionStateStore& operator=(const ConnectionStateStore&) = delete;
 
-    [[nodiscard]] TransitionResult transition_lifecycle(const LifecycleTransitionRequest& request);
-    [[nodiscard]] TransitionResult transition_operational(const OperationalTransitionRequest& request);
-    [[nodiscard]] TransitionResult transition_enforcement(const EnforcementTransitionRequest& request);
+    [[nodiscard]] TransitionResult transition_lifecycle(const LifecycleTransitionRequest& request) noexcept;
+    [[nodiscard]] TransitionResult transition_operational(const OperationalTransitionRequest& request) noexcept;
+    [[nodiscard]] TransitionResult transition_enforcement(const EnforcementTransitionRequest& request) noexcept;
     [[nodiscard]] std::optional<ConnectionStateSnapshot> find(const ConnectionId& id) const;
     [[nodiscard]] std::vector<ConnectionStateSnapshot> snapshots() const;
     [[nodiscard]] std::uint64_t retained_idempotency_horizon() const;
@@ -120,8 +120,9 @@ private:
     [[nodiscard]] TransitionResult failure(TransitionCode code, std::string message) const;
     [[nodiscard]] std::optional<TransitionResult> replay_or_conflict(
         const TransitionId& id, const std::string& fingerprint, std::uint64_t known_horizon) const;
-    void retain_idempotency(TransitionId id, std::string fingerprint, const TransitionResult& result);
-
+    [[nodiscard]] TransitionResult commit_transition(
+        ConnectionStateSnapshot state, TransitionId transition_id,
+        std::string fingerprint, bool new_record);
     // Registry reads complete before state_mutex_ is acquired. This enforces
     // registry-before-state ordering and prevents reverse/nested acquisition.
     const AcsRegistry* registry_ = nullptr;

@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <limits>
+#include <utility>
 
 #include "acs_test_fixture.hpp"
 #include "core/acs/acs_admission.hpp"
@@ -25,6 +26,9 @@ acs::AcsAdmissionRequest request_for(
 }
 
 int main() {
+    static_assert(noexcept(acs::evaluate_admission(
+        std::declval<const acs::AcsRegistrySnapshot&>(),
+        std::declval<const acs::AcsAdmissionRequest&>())));
     acs::AcsRegistry registry{}; acs_test::FixtureIds ids{};
     if (!acs_test::populate(registry, ids)) return EXIT_FAILURE;
     const auto snapshot = registry.snapshot(); const auto request = request_for(snapshot, ids);
