@@ -1,3 +1,5 @@
+add_subdirectory(acs)
+
 add_library(prometheus_runtime_core STATIC
     adaptive_state.cpp
     architecture_graph.cpp
@@ -18,6 +20,7 @@ target_include_directories(prometheus_runtime_core
 target_link_libraries(prometheus_runtime_core
     PUBLIC
         prometheus_backend_core
+        prometheus_acs
     PRIVATE
         Threads::Threads
 )

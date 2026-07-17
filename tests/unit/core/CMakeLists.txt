@@ -93,3 +93,8 @@ add_test(
     NAME prometheus_proposal_abi
     COMMAND test_proposal_abi
 )
+
+add_executable(test_acs_types test_acs_types.cpp)
+target_link_libraries(test_acs_types PRIVATE prometheus_acs)
+target_compile_features(test_acs_types PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_types COMMAND test_acs_types)
