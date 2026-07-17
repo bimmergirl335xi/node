@@ -1,76 +1,62 @@
-# Prometheus Node
+# Node
 
-Prometheus Node is the evolving runtime for a distributed cognitive mesh.
+Node is a portable, headless runtime foundation for a distributed embodied
+cognitive system. The current repository keeps production robot behavior on
+the legacy path while building typed, bounded infrastructure for future
+services and heterogeneous compute.
 
-The robot remains the embodied system and retains its existing sensor,
-microcontroller, timing, and safety architecture. Prometheus Node replaces the
-current monolithic node-side program with a portable runtime that can discover
-hardware, expose capabilities, host services, exchange typed messages, and
-participate in distributed learning and memory.
+## Integrated foundations
 
-Prometheus is the robot's internal name and project codename. A separate public
-name may be selected before public release.
+- CUDA kernel and backend foundations for explicit Pascal, Volta, and Turing
+  targets, stable device identity, health, capacity, registry metadata, and
+  dynamically loaded NVRTC readiness;
+- a generic CPU backend with topology, capability, health, capacity, a bounded
+  priority worker pool, explicit backpressure, and conservative SIMD
+  selection;
+- ARM capability enrichment through Linux auxiliary-vector observation and
+  injectable processor-identity parsing, without registering a second CPU
+  backend;
+- service lifecycle composition with callbacks outside the manager lock and a
+  borrowed backend registry in service context;
+- pure backend-neutral execution-policy evaluation;
+- typed adaptive-state descriptors, validation, atomic transactions, and
+  rollback;
+- typed architecture proposals, isolated shadow validation, impact evidence,
+  and a bounded versioned C ABI for future proposal producers.
 
-## Current Development Focus
+These foundations do not activate production execution, mutate live
+architecture, promote generated code, or replace the legacy robot loop.
 
-Confirmed kernel phases:
+## Public architecture specifications
 
-1. Activation and reduction
-2. Multitype dense operations
-3. LayerNorm and RMSNorm
-4. Temporal state, prediction error, and surprise
-5.1 Shadow-safe local learning mathematics
+- `docs/architecture/acs/` contains ACS-0000 through ACS-0009 as public Draft
+  communication architecture.
+- `docs/architecture/memory/` contains MEM-0000 through MEM-0010 as public
+  Draft memory architecture. No MEM persistence implementation is present.
+- `docs/architecture/immune/` contains IMM-0000 and IMM-0001 as public Draft
+  immune architecture. No private detection logic or IMM implementation is
+  present.
+- Public BOOT documents are not yet committed. Bootstrap implementation remains
+  reserved for `lane/bootstrap`.
 
-Current phase:
+## Build and test
 
-5.2 Optimizer state and accumulated update processing
-
-The compute foundation includes FP32, FP64, native fixed-width integer dense
-accumulation, asynchronous launch APIs, CPU-reference tests, per-device
-benchmarks, shadow learning, and explicit apply paths.
-
-## Learning Safety Boundary
-
-Learning mathematics and model deployment policy are separate.
-
-Learning and optimizer kernels can run in shadow mode. Shadow mode calculates
-proposed changes without modifying weights or optimizer state. Applying changes
-is explicit. Candidate promotion, provenance, validation, checkpointing,
-distribution, and rollback belong above the kernel layer.
-
-## Safe Build Workflow
-
-Use a new build directory for each phase. No source directory needs to be
-deleted:
+Use a named build directory. On memory-constrained hosts, build serially:
 
 ```bash
-cmake \
-  -S . \
-  -B build/phase-5-2 \
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DPROMETHEUS_CUDA_ARCHITECTURES="75" \
+cmake -S . -B build/local \
   -DPROMETHEUS_BUILD_TESTS=ON \
-  -DPROMETHEUS_BUILD_BENCHMARKS=ON
+  -DPROMETHEUS_BUILD_BENCHMARKS=OFF \
+  -DPROMETHEUS_BUILD_LEGACY_VISION=OFF \
+  '-DPROMETHEUS_CUDA_ARCHITECTURES=61;70;75'
 
-cmake --build build/phase-5-2 --parallel --verbose
-
-ctest \
-  --test-dir build/phase-5-2 \
-  --output-on-failure
+cmake --build build/local --parallel 1
+ctest --test-dir build/local --output-on-failure
 ```
 
-For the shared P106/V100 build, use architecture list `"61;70"`.
+CUDA tests require a compatible host driver and GPU. ARM discovery tests use
+injectable evidence on non-ARM hosts; validation on real AArch32, AArch64, and
+SVE/SVE2 systems remains separate.
 
-## Current Kernel Tests
-
-```text
-kernel_foundation
-dense_kernels
-normalization_kernels
-temporal_kernels
-learning_kernels
-optimizer_kernels
-```
-
-See `AI_CONTEXT.md` before architectural changes and
-`docs/CURRENT_STATE.md` for the current checkpoint.
+Read `AI_CONTEXT.md` before architecture changes and
+`docs/CURRENT_STATE.md` for the integrated checkpoint record.

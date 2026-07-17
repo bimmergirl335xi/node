@@ -2,12 +2,19 @@
 
 ## Summary
 
-Prometheus kernel Phases 1 through 5 are reported complete through candidate
-validation. Phase 6 is implemented and has passed direct bench probes on a
-dual-Quadro-RTX-4000 CUDA 12.4 system.
+Node has completed kernel Phases 1 through 5, the Phase 6 CUDA backend
+foundation, the Phase 7.1 generic CPU foundation, and Integration Checkpoint
+I-001 for bounded CPU execution and ARM discovery.
 
-Phase 6 establishes CUDA as one optional compute backend without redirecting
-robot execution away from the legacy source of truth.
+RC-001 integrates B-001, S-001, and A-001 through I-002: service lifecycle,
+execution policy, bounded NVRTC readiness, adaptive state, architecture shadow
+validation, and the native proposal ABI are now part of the integrated line.
+Public ACS-0000 through ACS-0009, MEM-0000 through MEM-0010, and IMM-0000
+through IMM-0001 are also present as Draft architecture specifications.
+
+These foundations do not redirect robot execution away from the legacy source
+of truth and do not implement ACS connections, MEM persistence, IMM behavior,
+live architecture application, or bootstrap.
 
 Prometheus remains a distributed cognitive neural mesh. Capacity scaling means
 running fewer, smaller, or narrower whole specialist instances on smaller
@@ -31,6 +38,10 @@ tensor/model sharding is a separate optional future capability.
 - Placeholder files are not considered implemented.
 - Kernel metadata alone is not considered executable coverage.
 - Model-promotion authority remains outside kernels.
+- Runtime compilation does not authorize or execute generated CUDA artifacts.
+- Shadow architecture success does not authorize live application.
+- Proposal, validation, shadow evaluation, live application, persistence, and
+  deployment authority remain separate.
 
 ## Confirmed Before Phase 6
 
@@ -156,15 +167,9 @@ Registration-ready records: 2
 Probe exit status: 0
 ```
 
-Observed identities:
-
-```text
-cuda:GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b
-  PCI 0000:2d:00.0
-
-cuda:GPU-4ced1003-8696-6957-d524-1539252d8c8d
-  PCI 0000:2e:00.0
-```
+Two stable UUID-backed device records and their temporary PCI observations were
+validated. Exact host device identifiers are omitted from this public state
+record.
 
 ## Phase 6.3 — Health and Observability
 
@@ -701,7 +706,7 @@ ordinary builds unless explicitly requested.
 
 ### Validation
 
-The user reported successful validation on host `curiosity` for:
+The user reported successful validation on the x86 validation workstation for:
 
 - CPU foundation discovery;
 - CPU backend registry lifecycle;
@@ -892,3 +897,72 @@ when rerun with host GPU access.
   adapters.
 - The CPU pool is not attached to `CpuBackend` or a production scheduler.
 - Robot behavior remains on the legacy path and was not migrated.
+
+## 2026-07-17 — RC-001/I-002 Repository Reconciliation
+
+RC-001 reconciled current public documentation, the nine completed runtime
+commits, and the existing CPU/ARM integration without squashing or rewriting
+shared history.
+
+### Integrated checkpoints
+
+- B-001: service lifecycle composition, pure backend-neutral execution policy,
+  and dynamically loaded bounded NVRTC readiness;
+- S-001: typed adaptive state, mutation validation, atomic transactions, and
+  rollback;
+- A-001: typed architecture proposals, isolated shadow validation and impact
+  analysis, and the versioned native proposal ABI;
+- I-002: ordinary merge of current `main` into `lane/runtime`, followed by a
+  validated fast-forward of `main`;
+- RC-001 documentation reconciliation: ACS-0000–0009, MEM-0000–0010, and
+  IMM-0000–0001 plus factual shared-document updates.
+
+All nine runtime commits remain reachable by their original identities. Their
+reconciliation did not add live architecture mutation, service graph
+reconfiguration, MEM persistence, ACS runtime behavior, generated CUDA
+execution, Julia embedding, or bootstrap implementation.
+
+### Validation
+
+The pre-integration `main` baseline used tests on, benchmarks off, legacy vision
+off, CUDA architectures `61;70;75`, and a serial build. It passed all 17 CTests,
+the x86 ARM not-applicable probe, strict CPU/ARM warning checks, and
+`git diff --check`.
+
+The reconciled runtime used the same configuration and serial build. It passed
+all 24 CTests with host GPU access. Service lifecycle, adaptive state,
+architecture shadow, and proposal ABI tests each passed 20 repeated runs; the
+CPU thread-pool test also passed 20 repeated runs. Strict C++ and C ABI warning
+checks passed. Existing CUDA kernels continue to emit known legacy `__shfl`
+and PTX deprecation diagnostics during compilation.
+
+### Public architecture state
+
+- ACS-0000 through ACS-0009 are Draft public architecture. ACS-I001 is not
+  implemented.
+- MEM-0000 through MEM-0010 are Draft public architecture. No MEM runtime or
+  persistence is implemented.
+- IMM-0000 and IMM-0001 are Draft public architecture. They contain no private
+  algorithms, thresholds, production topology, credentials, or response policy.
+- No public BOOT documents were committed on `lane/docs`; no BOOT directory or
+  bootstrap implementation was invented during reconciliation.
+
+### Historical pull requests
+
+The intended ARM work from PR #1 and the intended CPU thread-pool/SIMD work from
+PR #2 are already present through `9a0611d`. Both PRs are superseded historical
+inputs and must be closed without merging when authenticated GitHub access is
+available. Their branches must not be deleted.
+
+### Remaining limits and next approved work
+
+- Real AArch32, AArch64, heterogeneous ARM, and SVE/SVE2 hardware validation
+  remains pending.
+- `lane/cpu` retains one unique shutdown-observability commit beyond `main`.
+  Timed shutdown waiting is not implemented.
+- `lane/runtime` is ready for a separately authorized ACS-I001 checkpoint after
+  RC-001 completes.
+- `lane/docs` may continue independently authored public IMM work and future
+  public BOOT architecture.
+- No implementation work for ACS, MEM, IMM, GPU expansion, resource management,
+  or bootstrap was begun during RC-001.
