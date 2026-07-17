@@ -13,8 +13,8 @@ Public ACS-0000 through ACS-0009, MEM-0000 through MEM-0010, and IMM-0000
 through IMM-0001 are also present as Draft architecture specifications.
 
 These foundations do not redirect robot execution away from the legacy source
-of truth and do not implement ACS connections, MEM persistence, IMM behavior,
-live architecture application, or bootstrap.
+of truth and do not establish live ACS connections, implement MEM persistence,
+IMM behavior, live architecture application, or bootstrap.
 
 Prometheus remains a distributed cognitive neural mesh. Capacity scaling means
 running fewer, smaller, or narrower whole specialist instances on smaller
@@ -938,8 +938,8 @@ and PTX deprecation diagnostics during compilation.
 
 ### Public architecture state
 
-- ACS-0000 through ACS-0009 are Draft public architecture. ACS-I001 is not
-  implemented.
+- ACS-0000 through ACS-0009 are Draft public architecture. The bounded public
+  ACS-I001 runtime-local contract foundation is integrated.
 - MEM-0000 through MEM-0010 are Draft public architecture. No MEM runtime or
   persistence is implemented.
 - IMM-0000 and IMM-0001 are Draft public architecture. They contain no private
@@ -960,9 +960,61 @@ available. Their branches must not be deleted.
   remains pending.
 - `lane/cpu` retains one unique shutdown-observability commit beyond `main`.
   Timed shutdown waiting is not implemented.
-- `lane/runtime` is ready for a separately authorized ACS-I001 checkpoint after
-  RC-001 completes.
+- `lane/runtime` contains the ACS-I001 foundation and is synchronized through
+  the separately authorized ACS-R001 reconciliation.
 - `lane/docs` may continue independently authored public IMM work and future
   public BOOT architecture.
-- No implementation work for ACS, MEM, IMM, GPU expansion, resource management,
-  or bootstrap was begun during RC-001.
+- No implementation work for MEM, IMM, GPU expansion, resource management, or
+  bootstrap was begun during RC-001.
+
+## 2026-07-17 — ACS-R001 Adaptive Connection Substrate Reconciliation
+
+ACS-R001 integrates the ACS-I001 public infrastructure foundation from
+`lane/runtime`. The final integrated implementation commit before documentation
+reconciliation is `edad50bae4bfaea10104815fd75802d93a1c254c`; the four original
+ACS commits remain reachable without squash or rewrite.
+
+### Integrated ACS units
+
+- ACS-01.01: bounded public identities, evidence, authority, and condition
+  vocabulary;
+- ACS-01.02: immutable descriptors and a bounded registry with deterministic
+  snapshots;
+- ACS-01.03: independent lifecycle, operational, and enforcement transitions
+  with separate revisions, bounded history, and bounded idempotency;
+- ACS-01.04: pure metadata-only admission evaluation using explicit evidence,
+  authority, execution-policy, and budget outcomes.
+
+A focused corrective commit makes registry, transition, and admission public
+outcomes exception-contained. Lifecycle updates are prepared off-record and
+all fallible history/idempotency retention completes before the live state and
+generation advance, preventing torn state under allocation failure.
+
+### Validation
+
+- clean pre-ACS `main`: 24/24 CTests passed with host GPU access;
+- integrated ACS runtime: 29/29 CTests passed with host GPU access;
+- ACS lifecycle, ACS concurrency, service lifecycle, adaptive state,
+  architecture shadow, proposal ABI, and CPU thread-pool tests: 20/20 repeated
+  runs each;
+- strict native `-Wall -Wextra -Wpedantic -Werror`: passed;
+- `git diff --check`: passed.
+
+Existing CUDA 6.1 compatibility builds continue to report known legacy shuffle
+and nvlink diagnostics. They are unchanged from the clean baseline and are not
+native ACS warnings.
+
+### Remaining limits
+
+- Real AArch64, heterogeneous ARM, and SVE/SVE2 hardware validation remains
+  pending.
+- ACS-I001 does not establish live connections and adds no transport,
+  discovery, authentication provider, resource reservation, or persistence.
+- There is no ACS C ABI, descriptor removal, durable registry/state storage,
+  networking, or service-graph reconfiguration.
+- Quarantine is an enforcement condition, not a lifecycle phase. Admission is
+  advisory and non-reserving; successful evaluation grants no application,
+  deployment, MEM, or BOOT authority.
+- No BOOT/rescue service or public BOOT document exists.
+- `lane/cpu` retains its unfinished shutdown-observability work beyond `main`;
+  timed shutdown waiting remains unimplemented.

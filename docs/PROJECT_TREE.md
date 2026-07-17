@@ -1,6 +1,6 @@
 # Node — Tracked Project Tree
 
-This is a compact view of the tracked repository after RC-001. Generated build
+This is a compact view of the tracked repository after ACS-R001. Generated build
 directories and ignored runtime artifacts are omitted. Directories not shown
 must not be inferred to exist.
 
@@ -140,6 +140,15 @@ node/
 │   │   └── storage/
 │   ├── core/
 │   │   ├── CMakeLists.txt
+│   │   ├── acs/
+│   │   │   ├── CMakeLists.txt
+│   │   │   ├── acs_types.hpp
+│   │   │   ├── acs_registry.hpp
+│   │   │   ├── acs_registry.cpp
+│   │   │   ├── acs_lifecycle.hpp
+│   │   │   ├── acs_lifecycle.cpp
+│   │   │   ├── acs_admission.hpp
+│   │   │   └── acs_admission.cpp
 │   │   ├── adaptive_state.hpp
 │   │   ├── adaptive_state.cpp
 │   │   ├── architecture_graph.hpp
@@ -206,6 +215,12 @@ node/
         │   └── test_hailo_backend.cpp
         ├── core/
         │   ├── CMakeLists.txt
+        │   ├── acs_test_fixture.hpp
+        │   ├── test_acs_types.cpp
+        │   ├── test_acs_registry.cpp
+        │   ├── test_acs_lifecycle.cpp
+        │   ├── test_acs_admission.cpp
+        │   ├── test_acs_concurrency.cpp
         │   ├── test_service_lifecycle.cpp
         │   ├── test_execution_policy.cpp
         │   ├── test_adaptive_state.cpp
@@ -216,6 +231,6 @@ node/
         └── protocol/
 ```
 
-There is no tracked `docs/architecture/bootstrap/` directory in RC-001. The
+There is no tracked `docs/architecture/bootstrap/` directory in ACS-R001. The
 presence of placeholder source elsewhere in the tree does not imply completed
 implementation.

@@ -22,10 +22,14 @@ services and heterogeneous compute.
 - typed adaptive-state descriptors, validation, atomic transactions, and
   rollback;
 - typed architecture proposals, isolated shadow validation, impact evidence,
-  and a bounded versioned C ABI for future proposal producers.
+  and a bounded versioned C ABI for future proposal producers;
+- public ACS contracts with bounded identities, immutable descriptors,
+  deterministic registries, independently versioned lifecycle, operational,
+  and enforcement state, and pure non-reserving admission evaluation.
 
 These foundations do not activate production execution, mutate live
-architecture, promote generated code, or replace the legacy robot loop.
+architecture, establish live connections, reserve resources, promote generated
+code, or replace the legacy robot loop.
 
 ## Public architecture specifications
 
