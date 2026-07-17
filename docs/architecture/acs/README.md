@@ -24,10 +24,10 @@ Lower-numbered specifications carry broader architectural authority. Later speci
 | [ACS-0003](ACS-0003-signal-taxonomy.md) | Signal Taxonomy | Draft |
 | [ACS-0004](ACS-0004-endpoints-and-ports.md) | Endpoints and Ports | Draft |
 | [ACS-0005](ACS-0005-connection-lifecycle.md) | Connection Lifecycle | Draft |
-| ACS-0006 | Admission and Budgets | Planned |
-| ACS-0007 | Security and Trust | Planned |
-| ACS-0008 | Immune Integration | Planned |
-| ACS-0009 | Runtime Integration | Planned |
+| [ACS-0006](ACS-0006-admission-and-budgets.md) | Admission and Budgets | Draft |
+| [ACS-0007](ACS-0007-security-and-trust.md) | Security and Trust | Draft |
+| [ACS-0008](ACS-0008-immune-integration.md) | Immune Integration | Draft |
+| [ACS-0009](ACS-0009-runtime-integration.md) | Runtime Integration | Draft |
 
 ## Document status
 
