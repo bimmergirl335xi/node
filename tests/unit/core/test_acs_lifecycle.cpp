@@ -47,9 +47,20 @@ int main() {
     enforcement.admission_reference = ids.evidence; enforcement.known_idempotency_horizon = store.retained_idempotency_horizon();
     if (!store.transition_enforcement(enforcement).ok()) return EXIT_FAILURE;
 
+    const auto revocation = *acs::RevocationId::parse("revocation", "state");
+    if (!registry.register_revocation({revocation, ids.authority, ids.capability, ids.first,
+            {"connection.use"}, acs::AuthorityCondition::revoked, acs::DescriptorRevision{1}}).ok()) return EXIT_FAILURE;
+    enforcement.transition_id = tid<acs::TransitionId>("revoke"); enforcement.expected_revision = acs::EnforcementRevision{4};
+    enforcement.desired = acs::EnforcementCondition::revoked; enforcement.known_idempotency_horizon = store.retained_idempotency_horizon();
+    if (!store.transition_enforcement(enforcement).ok()) return EXIT_FAILURE;
+    enforcement.transition_id = tid<acs::TransitionId>("resurrect"); enforcement.expected_revision = acs::EnforcementRevision{5};
+    enforcement.desired = acs::EnforcementCondition::restricted; enforcement.known_idempotency_horizon = store.retained_idempotency_horizon();
+    if (store.transition_enforcement(enforcement).code != acs::TransitionCode::invalid_transition) return EXIT_FAILURE;
+
     const auto state = store.find(ids.connection);
     if (!state || state->history.size() != 3 || state->lifecycle_revision.value() != 2 ||
-        state->operational_revision.value() != 1 || state->enforcement_revision.value() != 4) return EXIT_FAILURE;
+        state->operational_revision.value() != 1 || state->enforcement_revision.value() != 5 ||
+        state->enforcement != acs::EnforcementCondition::revoked) return EXIT_FAILURE;
     const auto expired = store.transition_lifecycle({tid<acs::TransitionId>("forgotten"), ids.connection, acs::LifecycleRevision{2}, acs::ConnectionLifecycle::admitted, 0});
     return expired.code == acs::TransitionCode::idempotency_expired ? EXIT_SUCCESS : EXIT_FAILURE;
 }

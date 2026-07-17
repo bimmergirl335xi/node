@@ -11,6 +11,12 @@ Id id(const char* ns, const char* value) { return *Id::parse(ns, value); }
 
 int main() {
     static_assert(!std::is_copy_constructible_v<acs::AcsRegistry>);
+    acs::RegistryOptions invalid_options{};
+    invalid_options.maximum_connections = acs::kAbsoluteConnections + 1U;
+    acs::AcsRegistry invalid_registry{invalid_options};
+    if (invalid_registry.register_participant({id<acs::ParticipantId>("participant", "blocked")}).code !=
+        acs::RegistryCode::invalid_configuration) return EXIT_FAILURE;
+
     acs::RegistryOptions options{};
     options.maximum_participants = 2;
     options.maximum_ports_per_endpoint = 1;

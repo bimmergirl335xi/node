@@ -77,7 +77,8 @@ public:
         std::size_t maximum_bytes = kDefaultIdentifierBytes) {
         if (!canonical_token(name_space) || !canonical_token(value) ||
             maximum_bytes == 0 || maximum_bytes > kAbsoluteIdentifierBytes ||
-            name_space.size() + 1U + value.size() > maximum_bytes) return std::nullopt;
+            name_space.size() >= maximum_bytes ||
+            value.size() > maximum_bytes - name_space.size() - 1U) return std::nullopt;
         return TypedId{std::move(name_space), std::move(value)};
     }
 
