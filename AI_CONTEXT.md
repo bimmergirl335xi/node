@@ -105,9 +105,13 @@ The ACS rules include these boundaries:
   bounded, authorized, auditable, interruptible, and reversible where
   technically possible.
 
-ACS is currently specification work. ACS-I001 has not been implemented. Do not
-treat placeholder mesh and connection files, the service lifecycle foundation,
-or architecture shadow evaluation as an implemented ACS runtime substrate.
+ACS-I001 is integrated into `main` under `src/core/acs/`. It provides bounded
+public identities and evidence types, immutable descriptors, a bounded registry
+with deterministic snapshots, independently versioned lifecycle, operational,
+and enforcement state transitions with bounded idempotency, and pure
+non-reserving admission evaluation. It does not establish live connections or
+implement transport, discovery, authentication providers, resource reservation,
+persistence, MEM authority, or BOOT/rescue behavior.
 
 ## Memory, Immune, and Bootstrap Boundaries
 
@@ -241,8 +245,54 @@ Integrated through I-002:
 - a versioned bounded C ABI for proposal validation with caller-owned buffers,
   size queries, fixed-width types, and exception containment.
 
-Live architecture application, service reconfiguration, MEM persistence, ACS
-runtime behavior, Julia embedding, and generated CUDA execution remain absent.
+Live architecture application, service reconfiguration, MEM persistence, live
+ACS connection establishment, Julia embedding, and generated CUDA execution
+remain absent.
+
+### Adaptive Connection Substrate Foundation — ACS-I001
+
+Integrated into `main`:
+
+```text
+Source:
+  src/core/acs/
+
+Units:
+  ACS-01.01
+  ACS-01.02
+  ACS-01.03
+  ACS-01.04
+
+State dimensions:
+  lifecycle
+  operational
+  enforcement
+  authority
+
+Properties:
+  bounded identities
+  immutable descriptors
+  deterministic snapshots
+  versioned transitions
+  bounded idempotency
+  pure admission
+
+Explicit exclusions:
+  transport
+  discovery
+  authentication provider
+  resource reservation
+  persistence
+  MEM authority
+  BOOT/rescue behavior
+```
+
+The integrated validation passed 29/29 CTests with host GPU access. ACS
+lifecycle and concurrency tests, service lifecycle, adaptive state,
+architecture shadow, proposal ABI, and the CPU thread pool each passed 20
+repeated runs. Native C++ strict warning checks passed. Real AArch64 validation,
+descriptor removal, a public ACS C ABI, live connection establishment, and
+durable state remain pending.
 
 ## Active Branch Map
 
@@ -256,6 +306,7 @@ Current integrated line. It contains:
 - generic ARM Linux auxiliary-vector and processor-identity discovery;
 - the first Hailo accelerator-backend slice;
 - B-001, S-001, A-001, and their I-002 reconciliation merge;
+- the ACS-I001 public runtime-local contract foundation;
 - ACS-0000 through ACS-0009;
 - MEM-0000 through MEM-0010;
 - IMM-0000 and IMM-0001.
@@ -284,8 +335,8 @@ integration proves runtime and model execution readiness.
 
 ### `lane/runtime`
 
-Runtime implementation lane. RC-001 synchronizes it to final `main`; ACS-I001
-may begin only under a separate authorized checkpoint.
+Runtime implementation lane. ACS-R001 synchronizes it to final `main` after the
+ACS-I001 implementation and documentation reconciliation.
 
 ### `lane/docs`
 
@@ -358,8 +409,8 @@ closed without merging after final validation; its branch must not be deleted.
 
 Next work remains lane- and checkpoint-specific:
 
-1. `lane/runtime` may begin ACS-I001 only after RC-001 is complete and under its
-   own implementation checkpoint.
+1. Future ACS work must remain separately authorized and must not infer live
+   application, transport, persistence, or resource authority from ACS-I001.
 2. `lane/docs` may continue independently authored public IMM work and may add
    public BOOT architecture when separately authorized.
 3. `lane/cpu` may complete shutdown observability without merging that partial
@@ -376,7 +427,7 @@ Explicitly not yet complete:
 - CPU kernel registry and production CPU dispatch;
 - HailoRT loading, Hailo model execution, or production accelerator dispatch;
 - IMX500 backend integration;
-- ACS runtime connection and relationship implementation;
+- live ACS connection establishment, transport, discovery, and persistence;
 - MEM persistence and IMM implementation;
 - public BOOT architecture and bootstrap implementation;
 - live architecture proposal application or service-graph reconfiguration;
