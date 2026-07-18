@@ -1,0 +1,7 @@
+manifest_version=1
+component_id=example.incomplete
+abi_major=1
+abi_minor=0
+component_class=runtime
+launch_kind=none
+provenance_ref=build-record:example-incomplete-1

@@ -3,6 +3,8 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly P0_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
+readonly ASSEMBLY_DIR="$(cd -- "${P0_DIR}/.." && pwd -P)"
+readonly REPOSITORY_DIR="$(cd -- "${ASSEMBLY_DIR}/.." && pwd -P)"
 
 [[ "${EUID}" -ne 0 ]] || {
     printf '%s\n' 'run payload compilation as an ordinary user' >&2
@@ -78,15 +80,29 @@ readonly -a cflags=(
 "$cc_command" "${cflags[@]}" "$P0_DIR/src/p0_init.c" -o "$output_root/init"
 "$cc_command" "${cflags[@]}" "$P0_DIR/src/p0_test_runner.c" \
     -o "$output_root/bin/p0_test_runner"
+"$cc_command" "${cflags[@]}" \
+    -I"$REPOSITORY_DIR/interfaces" \
+    -I"$ASSEMBLY_DIR/providers" \
+    "$ASSEMBLY_DIR/providers/external_component_manifest.c" \
+    "$ASSEMBLY_DIR/providers/manifest_validator_main.c" \
+    -o "$output_root/bin/node_component_manifest_validator"
 
 for source_file in "$P0_DIR"/src/tests/*.c; do
     test_name="$(basename -- "$source_file" .c)"
     "$cc_command" "${cflags[@]}" "$source_file" -o "$output_root/tests/$test_name"
 done
 
-chmod 0755 -- "$output_root/init" "$output_root/bin/p0_test_runner" "$output_root/tests/"*
+chmod 0755 -- \
+    "$output_root/init" \
+    "$output_root/bin/p0_test_runner" \
+    "$output_root/bin/node_component_manifest_validator" \
+    "$output_root/tests/"*
 
-for executable in "$output_root/init" "$output_root/bin/p0_test_runner" "$output_root/tests/"*; do
+for executable in \
+    "$output_root/init" \
+    "$output_root/bin/p0_test_runner" \
+    "$output_root/bin/node_component_manifest_validator" \
+    "$output_root/tests/"*; do
     if readelf -l "$executable" | grep -q 'INTERP'; then
         printf 'payload is dynamically linked: %s\n' "$executable" >&2
         exit 1

@@ -6,6 +6,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "${SCRIPT_DIR}/lib/p0-common.sh"
 
 local_source=""
+source_bundle=""
 remote_url=""
 kernel_ref=""
 
@@ -21,6 +22,11 @@ while (($# > 0)); do
             remote_url="$2"
             shift 2
             ;;
+        --bundle)
+            (($# >= 2)) || p0_die "--bundle requires a path"
+            source_bundle="$2"
+            shift 2
+            ;;
         --ref)
             (($# >= 2)) || p0_die "--ref requires an immutable reviewed revision"
             kernel_ref="$2"
@@ -31,10 +37,11 @@ while (($# > 0)); do
 done
 
 [[ -n "$kernel_ref" ]] || p0_die "--ref is required"
-if [[ -n "$local_source" && -n "$remote_url" ]]; then
-    p0_die "select exactly one of --local or --url"
-fi
-[[ -n "$local_source" || -n "$remote_url" ]] || p0_die "select --local or --url"
+source_count=0
+[[ -n "$local_source" ]] && ((source_count += 1))
+[[ -n "$source_bundle" ]] && ((source_count += 1))
+[[ -n "$remote_url" ]] && ((source_count += 1))
+((source_count == 1)) || p0_die "select exactly one of --local, --bundle, or --url"
 
 "${SCRIPT_DIR}/preflight.sh" --stage source
 p0_export_ram_environment
@@ -50,6 +57,12 @@ if [[ -n "$local_source" ]]; then
     p0_assert_tmpfs "$NODE_P0_WORKSPACE"
     git clone --no-hardlinks --no-checkout -- "$local_source" "$P0_SOURCE_DIR"
     source_description="local:$local_source"
+elif [[ -n "$source_bundle" ]]; then
+    source_bundle="$(p0_canonical_path "$source_bundle")"
+    [[ -f "$source_bundle" ]] || p0_die "kernel source bundle unavailable: $source_bundle"
+    git bundle verify "$source_bundle" >/dev/null
+    git clone --no-checkout -- "$source_bundle" "$P0_SOURCE_DIR"
+    source_description="bundle:$source_bundle"
 else
     git clone --no-checkout -- "$remote_url" "$P0_SOURCE_DIR"
     source_description="url:$remote_url"

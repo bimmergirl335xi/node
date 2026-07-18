@@ -5,6 +5,26 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib/p0-common.sh
 source "${SCRIPT_DIR}/lib/p0-common.sh"
 
+manifest_argument=""
+while (($# > 0)); do
+    case "$1" in
+        --external-component-manifest)
+            (($# >= 2)) || p0_die "--external-component-manifest requires a path"
+            [[ -z "$manifest_argument" ]] || p0_die \
+                "--external-component-manifest may be supplied only once"
+            manifest_argument="$2"
+            shift 2
+            ;;
+        *) p0_die "unknown argument: $1" ;;
+    esac
+done
+
+manifest_environment="${NODE_EXTERNAL_COMPONENT_MANIFEST:-}"
+if [[ -n "$manifest_argument" && -n "$manifest_environment" ]]; then
+    p0_die "external component manifest is ambiguous: use argument or environment, not both"
+fi
+selected_manifest="${manifest_argument:-$manifest_environment}"
+
 "${SCRIPT_DIR}/preflight.sh" --stage build
 p0_export_ram_environment
 
@@ -15,6 +35,23 @@ fi
 "${SCRIPT_DIR}/compile-payloads.sh" --output "$P0_INITRAMFS_ROOT"
 install -D -m 0644 -- "$P0_ROOT_DIR/manifests/tests.manifest" \
     "$P0_INITRAMFS_ROOT/etc/node-p0/tests.manifest"
+
+manifest_validator="$P0_INITRAMFS_ROOT/bin/node_component_manifest_validator"
+if [[ -n "$selected_manifest" ]]; then
+    selected_manifest="$(p0_canonical_path "$selected_manifest")"
+    [[ -f "$selected_manifest" ]] || p0_die \
+        "external component manifest unavailable: $selected_manifest"
+    NODE_EXTERNAL_COMPONENT_MANIFEST= \
+        "$manifest_validator" --manifest "$selected_manifest"
+    install -D -m 0444 -- "$selected_manifest" \
+        "$P0_INITRAMFS_ROOT/etc/node/components/candidate.manifest"
+    p0_record external_component_manifest candidate_validated \
+        "source=explicit manifest=$selected_manifest activation=not_requested"
+else
+    NODE_EXTERNAL_COMPONENT_MANIFEST= "$manifest_validator"
+    p0_record external_component_manifest not_supplied \
+        "public_only=true activation=not_requested"
+fi
 
 if [[ -n "${NODE_P0_EXTRA_TESTS_MANIFEST:-}" || -n "${NODE_P0_EXTRA_TESTS_DIR:-}" ]]; then
     [[ -n "${NODE_P0_EXTRA_TESTS_MANIFEST:-}" && -n "${NODE_P0_EXTRA_TESTS_DIR:-}" ]] || \

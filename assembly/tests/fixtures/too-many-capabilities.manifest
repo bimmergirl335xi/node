@@ -1,0 +1,17 @@
+manifest_version=1
+component_id=example.overbound
+abi_major=1
+abi_minor=0
+component_class=runtime
+launch_kind=none
+required_capability=public.capability.1
+required_capability=public.capability.2
+required_capability=public.capability.3
+required_capability=public.capability.4
+required_capability=public.capability.5
+required_capability=public.capability.6
+required_capability=public.capability.7
+required_capability=public.capability.8
+required_capability=public.capability.9
+provenance_ref=build-record:example-overbound-1
+integrity_ref=sha256:3333333333333333333333333333333333333333333333333333333333333333

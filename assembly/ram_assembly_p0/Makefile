@@ -4,7 +4,7 @@ P0_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 HOST_BUILD_DIR ?= $(abspath $(P0_DIR)/../../build/ram-assembly-p0-host)
 HOST_ROOT := $(HOST_BUILD_DIR)/root
 
-.PHONY: all host-build host-test package inspect privilege-model shell-syntax validate clean
+.PHONY: all host-build host-test component-manifest-test package inspect privilege-model shell-syntax validate clean
 
 all: validate
 
@@ -25,6 +25,34 @@ host-test: host-build
 		exit 1; \
 	fi
 	grep -F '"outcome":"manifest_failed"' "$(HOST_BUILD_DIR)/invalid-manifest.out"
+
+component-manifest-test: host-build
+	"$(HOST_ROOT)/bin/node_component_manifest_validator" \
+		> "$(HOST_BUILD_DIR)/component-manifest-absent.out"
+	grep -F '"state":"not_supplied"' \
+		"$(HOST_BUILD_DIR)/component-manifest-absent.out"
+	"$(HOST_ROOT)/bin/node_component_manifest_validator" \
+		--manifest "$(P0_DIR)/../manifests/public/example.manifest" \
+		> "$(HOST_BUILD_DIR)/component-manifest-valid.out"
+	grep -F '"state":"validated_candidate"' \
+		"$(HOST_BUILD_DIR)/component-manifest-valid.out"
+	grep -F '"activated":false' "$(HOST_BUILD_DIR)/component-manifest-valid.out"
+	@if "$(HOST_ROOT)/bin/node_component_manifest_validator" \
+		--manifest "$(P0_DIR)/../tests/fixtures/malformed.manifest" \
+		> "$(HOST_BUILD_DIR)/component-manifest-malformed.out" 2>&1; then \
+		echo 'malformed external component manifest was unexpectedly accepted' >&2; \
+		exit 1; \
+	fi
+	grep -F '"failure":"malformed"' \
+		"$(HOST_BUILD_DIR)/component-manifest-malformed.out"
+	@if "$(HOST_ROOT)/bin/node_component_manifest_validator" \
+		--manifest "$(P0_DIR)/../tests/fixtures/incompatible.manifest" \
+		> "$(HOST_BUILD_DIR)/component-manifest-incompatible.out" 2>&1; then \
+		echo 'incompatible external component manifest was unexpectedly accepted' >&2; \
+		exit 1; \
+	fi
+	grep -F '"failure":"incompatible_abi"' \
+		"$(HOST_BUILD_DIR)/component-manifest-incompatible.out"
 
 package: host-build
 	mkdir -p "$(HOST_BUILD_DIR)/artifacts"
@@ -48,7 +76,7 @@ shell-syntax:
 privilege-model:
 	"$(P0_DIR)/scripts/test-privilege-model.sh"
 
-validate: shell-syntax privilege-model host-test inspect
+validate: shell-syntax privilege-model host-test component-manifest-test inspect
 	git -C "$(P0_DIR)" diff --check -- .
 
 clean:

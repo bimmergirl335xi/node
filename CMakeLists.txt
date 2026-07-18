@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(prometheus_node VERSION 0.5.2 LANGUAGES CXX)
+project(prometheus_node VERSION 0.5.2 LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -128,6 +132,8 @@ if(PROMETHEUS_BUILD_TESTS)
     add_subdirectory(tests/unit/core)
     add_subdirectory(tests/unit/hardware)
 endif()
+
+add_subdirectory(assembly)
 
 if(PROMETHEUS_BUILD_BENCHMARKS AND PROMETHEUS_CUDA_AVAILABLE)
     function(prometheus_add_cuda_benchmark target source)
