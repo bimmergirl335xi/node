@@ -114,6 +114,15 @@ assembly/ram_assembly_p0/scripts/fetch-kernel-source.sh \
   --ref <reviewed-commit>
 ```
 
+An explicitly supplied Git source bundle is also accepted without vendoring
+kernel source in this repository:
+
+```sh
+assembly/ram_assembly_p0/scripts/fetch-kernel-source.sh \
+  --bundle /path/to/reviewed-kernel-source.bundle \
+  --ref <reviewed-commit>
+```
+
 Resolve and verify the candidate configuration, build serially, then create
 and inspect the initramfs:
 
@@ -123,6 +132,19 @@ assembly/ram_assembly_p0/scripts/build-kernel.sh
 assembly/ram_assembly_p0/scripts/build-initramfs.sh
 assembly/ram_assembly_p0/scripts/validate-artifacts.sh
 ```
+
+`build-initramfs.sh` normally runs with no external component declaration. To
+stage one structurally validated candidate manifest, supply exactly one input:
+
+```sh
+assembly/ram_assembly_p0/scripts/build-initramfs.sh \
+  --external-component-manifest /exact/path/to/manifest
+```
+
+or set `NODE_EXTERNAL_COMPONENT_MANIFEST` before running the script. Supplying
+both is rejected. The validated manifest is copied into RAM as inert candidate
+data. PID 1 does not read or execute it, and validation grants no acceptance,
+generation membership, authority, activation, or readiness.
 
 Loading and executing are separate boundaries:
 
@@ -187,7 +209,9 @@ is bounded by PID 1 to 600 seconds.
 Repository-side validation does not perform a RAM-only kernel build or load
 `kexec`. It compiles every C source statically with strict warnings, checks
 shell syntax, packages and inspects a host initramfs, runs the exact manifest
-parser/result engine, and proves the expected timeout and intentional failure:
+parser/result engines, exercises the no-external-manifest path, rejects
+malformed and incompatible external declarations, and proves the expected
+timeout and intentional failure:
 
 ```sh
 make -C assembly/ram_assembly_p0 validate
