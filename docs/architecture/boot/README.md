@@ -260,7 +260,7 @@ Resource exhaustion is a first-class failure outcome. It MUST NOT be converted i
 | [BOOT-0002](BOOT-0002-state-and-failure-model.md) | State and Failure Model | Draft |
 | [BOOT-0003](BOOT-0003-identity-trust-and-authority-boundary.md) | Identity, Trust, and Authority Boundary | Draft |
 | [BOOT-0004](BOOT-0004-discovery-and-assistance-negotiation.md) | Discovery and Assistance Negotiation | Draft |
-| [BOOT-0005](BOOT-0005-recovery-plans-and-artifact-boundaries.md) | Recovery Plans and Artifact Boundaries | Planned |
+| [BOOT-0005](BOOT-0005-recovery-plans-and-artifact-boundaries.md) | Recovery Plans and Artifact Boundaries | Draft |
 | [BOOT-0006](BOOT-0006-minimal-runtime-and-language-constraints.md) | Minimal Runtime and Language Constraints | Planned |
 | [BOOT-0007](BOOT-0007-acs-imm-and-mem-integration.md) | ACS, IMM, and MEM Integration | Planned |
 | [BOOT-0008](BOOT-0008-failure-retry-and-operator-intervention.md) | Failure, Retry, and Operator Intervention | Planned |
