@@ -87,7 +87,7 @@ failure-reporting reserve.
 
 ```sh
 export NODE_P0_WORKSPACE=/run/node-assembly-p0
-bootstrap/ram_assembly_p0/scripts/create-ram-workspace.sh \
+assembly/ram_assembly_p0/scripts/create-ram-workspace.sh \
   --mount --size-mib 6144
 ```
 
@@ -95,13 +95,13 @@ Disable swap through the machine's existing operator procedure, then verify
 the strict build preflight. This project does not disable swap automatically.
 
 ```sh
-bootstrap/ram_assembly_p0/scripts/preflight.sh --stage build
+assembly/ram_assembly_p0/scripts/preflight.sh --stage build
 ```
 
 Copy an existing local checkout into RAM:
 
 ```sh
-bootstrap/ram_assembly_p0/scripts/fetch-kernel-source.sh \
+assembly/ram_assembly_p0/scripts/fetch-kernel-source.sh \
   --local /path/to/Linux-kernel-node-runtime \
   --ref <reviewed-commit>
 ```
@@ -109,7 +109,7 @@ bootstrap/ram_assembly_p0/scripts/fetch-kernel-source.sh \
 Or clone the reviewed source directly into RAM:
 
 ```sh
-bootstrap/ram_assembly_p0/scripts/fetch-kernel-source.sh \
+assembly/ram_assembly_p0/scripts/fetch-kernel-source.sh \
   --url git@github.com:bimmergirl335xi/Linux-kernel-node-runtime.git \
   --ref <reviewed-commit>
 ```
@@ -118,17 +118,17 @@ Resolve and verify the candidate configuration, build serially, then create
 and inspect the initramfs:
 
 ```sh
-bootstrap/ram_assembly_p0/scripts/configure-kernel.sh
-bootstrap/ram_assembly_p0/scripts/build-kernel.sh
-bootstrap/ram_assembly_p0/scripts/build-initramfs.sh
-bootstrap/ram_assembly_p0/scripts/validate-artifacts.sh
+assembly/ram_assembly_p0/scripts/configure-kernel.sh
+assembly/ram_assembly_p0/scripts/build-kernel.sh
+assembly/ram_assembly_p0/scripts/build-initramfs.sh
+assembly/ram_assembly_p0/scripts/validate-artifacts.sh
 ```
 
 Loading and executing are separate boundaries:
 
 ```sh
-bootstrap/ram_assembly_p0/scripts/load-kexec.sh
-bootstrap/ram_assembly_p0/scripts/execute-kexec.sh \
+assembly/ram_assembly_p0/scripts/load-kexec.sh
+assembly/ram_assembly_p0/scripts/execute-kexec.sh \
   --i-understand-control-transfers-now
 ```
 
@@ -190,7 +190,7 @@ shell syntax, packages and inspects a host initramfs, runs the exact manifest
 parser/result engine, and proves the expected timeout and intentional failure:
 
 ```sh
-make -C bootstrap/ram_assembly_p0 validate
+make -C assembly/ram_assembly_p0 validate
 ```
 
 Generated host-validation files go to the repository's already ignored named
