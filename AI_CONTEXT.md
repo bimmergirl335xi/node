@@ -468,3 +468,65 @@ explicitly requests a reconciliation or rewrite.
 Handoffs must preserve architecture decisions, completed work, validation,
 limitations, unfinished placeholders, exact commands, required files, and a
 clean next-step boundary.
+
+## 2026-07-18 — CPU-7.2.1A Bounded CPU Thread-Pool Shutdown
+
+CPU-7.2.1A was reconstructed from the authoritative `lane/cpu` base commit
+`c026d0940a687a567d056a4dd65c79c705feae5b`. The previously expected source
+commit `cbf880100272ed2992236a466699a353f6d43e63` was retired as an input after
+repository, attachment, bundle, patch, reflog, and direct-origin recovery all
+confirmed that the object was unavailable.
+
+The single-group CPU pool now exposes non-blocking `request_shutdown(mode)` and
+bounded `wait_for_shutdown(timeout)` operations. Results distinguish an
+accepted request, an idempotent repeated request, drain-to-cancel escalation,
+full stop, timeout, worker-origin rejection, invalid timeout, and lifecycle
+failure. Requests stop acceptance immediately, preserve cooperative running
+tasks, wake workers, and never join. Drain retains queued work; cancel-pending
+cancels queued work exactly once. Policy is monotonic from drain to
+cancel-pending and cannot regress.
+
+Bounded waits use `std::chrono::steady_clock` condition-variable deadlines.
+Timeout leaves draining/stopping state, active/live counts, and thread handles
+truthful. Final joining occurs only after every spawned worker has exited and
+is serialized across concurrent waiters without holding the state mutex.
+Worker tasks may request shutdown but receive `called_from_worker` when they
+attempt to wait. Existing blocking `drain()` and `stop()` use the same request
+and finalization path and retain cooperative indefinite-wait behavior.
+
+Restart remains legal only after completed finalization. A new generation
+resets request, mode, and finalization state while task IDs and lifetime
+counters remain cumulative. Spawned workers are counted before their entry
+function begins, preventing an early zero-live observation, and worker-ID
+storage is reserved before launch to contain allocation failure.
+
+Changed files are `src/backends/cpu/cpu_thread_pool.hpp`,
+`src/backends/cpu/cpu_thread_pool.cpp`, and
+`tests/unit/backends/test_cpu_thread_pool.cpp`. Tests cover prompt requests,
+truthful timeout and later completion, drain, monotonic escalation, concurrent
+requesters and waiters, worker-origin request/wait, timeout-time restart
+rejection, restart after completion, two-worker exactly-once execution,
+four-worker synchronized producers with bounded backpressure and exact
+accounting, and the existing worker-origin destruction invariant. The existing
+ARMv7 scalar/NEON/SVE/SVE2 fail-closed regression remains unchanged and green.
+
+Validation used `build/cpu-7-2-1a-reconstructed`, CUDA architectures
+`61;70;75`, tests enabled, benchmarks and legacy vision disabled, strict native
+`-Wall -Wextra -Wpedantic -Werror`, and serial builds. Focused CPU CTest passed
+5/5, the thread-pool test passed 100/100 consecutive runs, the complete build
+passed, and complete CTest passed 29/29. Focused AddressSanitizer and
+UndefinedBehaviorSanitizer passed with leak detection disabled because
+LeakSanitizer is unavailable under the validation environment's ptrace setup;
+focused ThreadSanitizer passed. Existing CUDA shuffle/PTX deprecation warnings
+remain outside this checkpoint.
+
+A sandboxed complete-suite rerun could not access the NVIDIA device and failed
+only the eight CUDA-dependent tests. The same binaries passed 29/29 unchanged
+when rerun with host GPU access.
+
+Running tasks remain cooperative. A task that never returns can prevent full
+shutdown indefinitely; bounded waiting reports that condition without killing,
+detaching, or abandoning the worker. CPU-7.2.1A adds no affinity, NUMA routing,
+work stealing, execution-group collection, typed kernel, backend ownership,
+GPU, ACS, BOOT, robot, or neural-current behavior. The recommended next
+checkpoint is CPU-7.2.2 — Execution-Group Pool Collection.

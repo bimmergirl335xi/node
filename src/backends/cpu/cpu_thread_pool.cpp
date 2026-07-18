@@ -39,6 +39,16 @@ namespace {
     return static_cast<std::size_t>(priority);
 }
 
+[[nodiscard]] bool valid_stop_mode(
+    CpuThreadPoolStopMode mode) noexcept {
+    switch (mode) {
+        case CpuThreadPoolStopMode::drain:
+        case CpuThreadPoolStopMode::cancel_pending:
+            return true;
+    }
+    return false;
+}
+
 void assign_message_noexcept(
     std::string& destination,
     const char* message) noexcept {
@@ -150,6 +160,7 @@ struct CpuThreadPool::Impl {
     mutable std::mutex mutex{};
     std::condition_variable work_cv{};
     std::condition_variable idle_cv{};
+    std::condition_variable shutdown_cv{};
     CpuThreadPoolStatus status{};
     std::array<std::deque<QueuedTask>, 4> queues{};
     std::vector<std::thread> workers{};
@@ -167,6 +178,9 @@ struct CpuThreadPool::Impl {
     std::uint64_t cancelled = 0;
     bool accepting = false;
     bool stop_requested = false;
+    bool shutdown_requested = false;
+    CpuThreadPoolStopMode shutdown_mode = CpuThreadPoolStopMode::drain;
+    bool finalization_in_progress = false;
     std::size_t priority_schedule_cursor = 0;
 
     [[nodiscard]] bool queues_empty() const noexcept {
@@ -252,7 +266,6 @@ struct CpuThreadPool::Impl {
     void worker_loop() {
         {
             std::lock_guard<std::mutex> lock(mutex);
-            ++live_workers;
             worker_ids.push_back(std::this_thread::get_id());
         }
 
@@ -332,6 +345,7 @@ struct CpuThreadPool::Impl {
                 worker_ids.end());
             --live_workers;
             idle_cv.notify_all();
+            shutdown_cv.notify_all();
         }
     }
 
@@ -365,6 +379,9 @@ CpuThreadPool::~CpuThreadPool() {
     {
         std::lock_guard<std::mutex> lock(implementation->mutex);
         implementation->accepting = false;
+        implementation->shutdown_requested = true;
+        implementation->shutdown_mode =
+            CpuThreadPoolStopMode::cancel_pending;
         implementation->status.state = CpuThreadPoolState::stopping;
         implementation->status.message =
             "CPU thread pool is stopping during worker-origin destruction";
@@ -388,6 +405,12 @@ CpuThreadPoolStatus CpuThreadPool::start() {
             impl_->status.message = "CPU thread pool lifecycle is busy";
             return impl_->status;
         }
+        if (!impl_->workers.empty() || impl_->live_workers != 0 ||
+            impl_->finalization_in_progress) {
+            impl_->status.message =
+                "CPU thread pool worker generation is not finalized";
+            return impl_->status;
+        }
         if (impl_->options.worker_count == 0 ||
             impl_->options.queue_capacity == 0) {
             impl_->status.state = CpuThreadPoolState::failed;
@@ -396,6 +419,9 @@ CpuThreadPoolStatus CpuThreadPool::start() {
             return impl_->status;
         }
         impl_->stop_requested = false;
+        impl_->shutdown_requested = false;
+        impl_->shutdown_mode = CpuThreadPoolStopMode::drain;
+        impl_->finalization_in_progress = false;
         impl_->accepting = false;
         impl_->priority_schedule_cursor = 0;
         impl_->status.state = CpuThreadPoolState::starting;
@@ -404,12 +430,29 @@ CpuThreadPoolStatus CpuThreadPool::start() {
 
     try {
         impl_->workers.reserve(impl_->options.worker_count);
+        {
+            std::lock_guard<std::mutex> lock(impl_->mutex);
+            impl_->worker_ids.reserve(impl_->options.worker_count);
+        }
         for (std::size_t index = 0;
              index < impl_->options.worker_count;
              ++index) {
             const std::shared_ptr<Impl> implementation = impl_;
-            impl_->workers.emplace_back(
-                [implementation]() { implementation->worker_loop(); });
+            {
+                std::lock_guard<std::mutex> lock(impl_->mutex);
+                ++impl_->live_workers;
+            }
+            try {
+                impl_->workers.emplace_back(
+                    [implementation]() { implementation->worker_loop(); });
+            } catch (...) {
+                {
+                    std::lock_guard<std::mutex> lock(impl_->mutex);
+                    --impl_->live_workers;
+                }
+                impl_->shutdown_cv.notify_all();
+                throw;
+            }
         }
     } catch (const std::exception& exception) {
         {
@@ -529,6 +572,145 @@ CpuTaskSubmissionResult CpuThreadPool::submit(
     return result;
 }
 
+CpuThreadPoolShutdownResult CpuThreadPool::request_shutdown(
+    CpuThreadPoolStopMode mode) {
+    if (!valid_stop_mode(mode)) {
+        return CpuThreadPoolShutdownResult::failed_lifecycle;
+    }
+
+    CpuThreadPoolShutdownResult result =
+        CpuThreadPoolShutdownResult::request_accepted;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        if (impl_->status.state == CpuThreadPoolState::failed ||
+            impl_->status.state == CpuThreadPoolState::starting) {
+            return CpuThreadPoolShutdownResult::failed_lifecycle;
+        }
+        if (impl_->status.state == CpuThreadPoolState::stopped) {
+            impl_->accepting = false;
+            impl_->stop_requested = true;
+            impl_->status.message = "CPU thread pool is stopped";
+            return CpuThreadPoolShutdownResult::fully_stopped;
+        }
+        if (impl_->status.state == CpuThreadPoolState::constructed) {
+            impl_->accepting = false;
+            impl_->stop_requested = true;
+            impl_->shutdown_requested = true;
+            impl_->shutdown_mode = mode;
+            impl_->status.state = CpuThreadPoolState::stopped;
+            impl_->status.message = "CPU thread pool is stopped";
+            return CpuThreadPoolShutdownResult::fully_stopped;
+        }
+
+        if (impl_->shutdown_requested) {
+            if (impl_->shutdown_mode == CpuThreadPoolStopMode::drain &&
+                mode == CpuThreadPoolStopMode::cancel_pending) {
+                impl_->shutdown_mode = mode;
+                impl_->status.state = CpuThreadPoolState::stopping;
+                impl_->status.message = "Cancelling queued CPU work";
+                impl_->cancel_queued_locked();
+                result = CpuThreadPoolShutdownResult::escalated;
+            } else {
+                result = CpuThreadPoolShutdownResult::already_requested;
+            }
+        } else {
+            impl_->shutdown_requested = true;
+            impl_->shutdown_mode = mode;
+            impl_->status.state =
+                mode == CpuThreadPoolStopMode::drain
+                    ? CpuThreadPoolState::draining
+                    : CpuThreadPoolState::stopping;
+            impl_->status.message =
+                mode == CpuThreadPoolStopMode::drain
+                    ? "Draining queued CPU work"
+                    : "Cancelling queued CPU work";
+            if (mode == CpuThreadPoolStopMode::cancel_pending) {
+                impl_->cancel_queued_locked();
+            }
+        }
+
+        impl_->accepting = false;
+        impl_->stop_requested = true;
+    }
+    impl_->work_cv.notify_all();
+    return result;
+}
+
+CpuThreadPoolShutdownResult CpuThreadPool::wait_for_shutdown(
+    std::chrono::nanoseconds timeout) {
+    if (impl_->called_from_worker()) {
+        return CpuThreadPoolShutdownResult::called_from_worker;
+    }
+    if (timeout < std::chrono::nanoseconds::zero()) {
+        return CpuThreadPoolShutdownResult::invalid_timeout;
+    }
+
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point now = Clock::now();
+    const Clock::duration remaining = Clock::time_point::max() - now;
+    const std::chrono::duration<long double> requested_span{timeout};
+    const std::chrono::duration<long double> remaining_span{remaining};
+    const Clock::time_point deadline =
+        requested_span >= remaining_span
+            ? Clock::time_point::max()
+            : now + std::chrono::duration_cast<Clock::duration>(timeout);
+
+    std::unique_lock<std::mutex> lock(impl_->mutex);
+    if (impl_->status.state == CpuThreadPoolState::failed) {
+        return CpuThreadPoolShutdownResult::failed_lifecycle;
+    }
+    if (impl_->status.state == CpuThreadPoolState::stopped &&
+        impl_->workers.empty() && !impl_->finalization_in_progress) {
+        return CpuThreadPoolShutdownResult::fully_stopped;
+    }
+    if (!impl_->shutdown_requested) {
+        return CpuThreadPoolShutdownResult::failed_lifecycle;
+    }
+
+    while (impl_->live_workers != 0 ||
+           impl_->finalization_in_progress) {
+        const bool ready = impl_->shutdown_cv.wait_until(
+            lock,
+            deadline,
+            [this]() {
+                return impl_->status.state ==
+                           CpuThreadPoolState::stopped ||
+                       (impl_->live_workers == 0 &&
+                        !impl_->finalization_in_progress);
+            });
+        if (!ready) {
+            return CpuThreadPoolShutdownResult::timed_out;
+        }
+        if (impl_->status.state == CpuThreadPoolState::stopped) {
+            return CpuThreadPoolShutdownResult::fully_stopped;
+        }
+    }
+
+    impl_->finalization_in_progress = true;
+    lock.unlock();
+    impl_->join_workers();
+    lock.lock();
+
+    impl_->finalization_in_progress = false;
+    if (impl_->live_workers != 0 || !impl_->workers.empty()) {
+        impl_->status.state = CpuThreadPoolState::failed;
+        impl_->status.message =
+            "CPU thread pool worker finalization failed";
+        lock.unlock();
+        impl_->shutdown_cv.notify_all();
+        return CpuThreadPoolShutdownResult::failed_lifecycle;
+    }
+
+    impl_->status.state = CpuThreadPoolState::stopped;
+    impl_->status.message =
+        impl_->shutdown_mode == CpuThreadPoolStopMode::drain
+            ? "CPU thread pool drained and stopped"
+            : "CPU thread pool stopped";
+    lock.unlock();
+    impl_->shutdown_cv.notify_all();
+    return CpuThreadPoolShutdownResult::fully_stopped;
+}
+
 CpuThreadPoolStatus CpuThreadPool::drain() {
     if (impl_->called_from_worker()) {
         CpuThreadPoolStatus current = status();
@@ -537,36 +719,14 @@ CpuThreadPoolStatus CpuThreadPool::drain() {
         return current;
     }
 
-    std::lock_guard<std::mutex> lifecycle_lock(impl_->lifecycle_mutex);
-    {
-        std::unique_lock<std::mutex> lock(impl_->mutex);
-        if (impl_->status.state == CpuThreadPoolState::constructed ||
-            impl_->status.state == CpuThreadPoolState::stopped) {
-            impl_->accepting = false;
-            impl_->status.state = CpuThreadPoolState::stopped;
-            impl_->status.message = "CPU thread pool is stopped";
-            return impl_->status;
-        }
-        if (impl_->status.state == CpuThreadPoolState::failed) {
-            return impl_->status;
-        }
-        impl_->accepting = false;
-        impl_->status.state = CpuThreadPoolState::draining;
-        impl_->status.message = "Draining queued CPU work";
-        impl_->idle_cv.wait(
-            lock,
-            [this]() {
-                return impl_->queues_empty() && impl_->active_count == 0;
-            });
-        impl_->stop_requested = true;
+    const CpuThreadPoolShutdownResult requested =
+        request_shutdown(CpuThreadPoolStopMode::drain);
+    if (requested != CpuThreadPoolShutdownResult::failed_lifecycle &&
+        requested != CpuThreadPoolShutdownResult::fully_stopped) {
+        static_cast<void>(wait_for_shutdown(
+            std::chrono::nanoseconds::max()));
     }
-    impl_->work_cv.notify_all();
-    impl_->join_workers();
-
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->status.state = CpuThreadPoolState::stopped;
-    impl_->status.message = "CPU thread pool drained and stopped";
-    return impl_->status;
+    return status();
 }
 
 CpuThreadPoolStatus CpuThreadPool::stop(CpuThreadPoolStopMode mode) {
@@ -577,48 +737,13 @@ CpuThreadPoolStatus CpuThreadPool::stop(CpuThreadPoolStopMode mode) {
         return current;
     }
 
-    std::lock_guard<std::mutex> lifecycle_lock(impl_->lifecycle_mutex);
-    {
-        std::unique_lock<std::mutex> lock(impl_->mutex);
-        if (impl_->status.state == CpuThreadPoolState::constructed ||
-            impl_->status.state == CpuThreadPoolState::stopped) {
-            impl_->accepting = false;
-            impl_->status.state = CpuThreadPoolState::stopped;
-            impl_->status.message = "CPU thread pool is stopped";
-            return impl_->status;
-        }
-        impl_->accepting = false;
-        impl_->status.state =
-            mode == CpuThreadPoolStopMode::drain
-                ? CpuThreadPoolState::draining
-                : CpuThreadPoolState::stopping;
-        impl_->status.message =
-            mode == CpuThreadPoolStopMode::drain
-                ? "Draining queued CPU work"
-                : "Cancelling queued CPU work";
-
-        if (mode == CpuThreadPoolStopMode::cancel_pending) {
-            impl_->cancel_queued_locked();
-        } else {
-            impl_->idle_cv.wait(
-                lock,
-                [this]() {
-                    return impl_->queues_empty() &&
-                           impl_->active_count == 0;
-                });
-        }
-        impl_->stop_requested = true;
+    const CpuThreadPoolShutdownResult requested = request_shutdown(mode);
+    if (requested != CpuThreadPoolShutdownResult::failed_lifecycle &&
+        requested != CpuThreadPoolShutdownResult::fully_stopped) {
+        static_cast<void>(wait_for_shutdown(
+            std::chrono::nanoseconds::max()));
     }
-    impl_->work_cv.notify_all();
-    impl_->join_workers();
-
-    std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->status.state = CpuThreadPoolState::stopped;
-    impl_->status.message =
-        mode == CpuThreadPoolStopMode::drain
-            ? "CPU thread pool drained and stopped"
-            : "CPU thread pool stopped";
-    return impl_->status;
+    return status();
 }
 
 CpuThreadPoolStatus CpuThreadPool::status() const {
@@ -702,6 +827,28 @@ const char* to_string(CpuThreadPoolStopMode value) noexcept {
         case CpuThreadPoolStopMode::drain: return "drain";
         case CpuThreadPoolStopMode::cancel_pending:
             return "cancel_pending";
+    }
+    return "unknown";
+}
+
+const char* to_string(CpuThreadPoolShutdownResult value) noexcept {
+    switch (value) {
+        case CpuThreadPoolShutdownResult::request_accepted:
+            return "request_accepted";
+        case CpuThreadPoolShutdownResult::already_requested:
+            return "already_requested";
+        case CpuThreadPoolShutdownResult::escalated:
+            return "escalated";
+        case CpuThreadPoolShutdownResult::fully_stopped:
+            return "fully_stopped";
+        case CpuThreadPoolShutdownResult::timed_out:
+            return "timed_out";
+        case CpuThreadPoolShutdownResult::called_from_worker:
+            return "called_from_worker";
+        case CpuThreadPoolShutdownResult::invalid_timeout:
+            return "invalid_timeout";
+        case CpuThreadPoolShutdownResult::failed_lifecycle:
+            return "failed_lifecycle";
     }
     return "unknown";
 }

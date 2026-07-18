@@ -1018,3 +1018,61 @@ native ACS warnings.
 - No BOOT/rescue service or public BOOT document exists.
 - `lane/cpu` retains its unfinished shutdown-observability work beyond `main`;
   timed shutdown waiting remains unimplemented.
+
+## 2026-07-18 — CPU-7.2.1A Bounded Shutdown Reconstruction
+
+CPU-7.2.1A is complete on the isolated
+`codex/cpu-7-2-1a-bounded-shutdown` branch, reconstructed from authoritative
+`lane/cpu` commit `c026d0940a687a567d056a4dd65c79c705feae5b`. The unavailable
+historical source SHA `cbf880100272ed2992236a466699a353f6d43e63` is no longer a
+required input after exhaustive recovery failed.
+
+The existing single-group CPU thread pool now provides:
+
+- a non-blocking `request_shutdown()` operation for drain or cancel-pending;
+- a monotonic drain-to-cancel policy with idempotent repeated requests;
+- a steady-clock `wait_for_shutdown()` operation with explicit full-stop,
+  timeout, invalid-timeout, worker-origin, and lifecycle results;
+- truthful draining/stopping snapshots after timeout;
+- serialized final joining only after all spawned workers exit;
+- worker-origin non-blocking requests and explicit rejection of worker-origin
+  waits;
+- restart rejection until finalization and clean restart afterward with
+  monotonic task IDs and cumulative counters;
+- compatibility for the existing blocking `drain()` and `stop()` APIs and the
+  existing worker-origin destruction contract.
+
+Only the thread-pool header, implementation, and existing thread-pool test were
+modified. Deterministic validation covers non-blocking request behavior,
+bounded timeout and later completion, queue-preserving drain, drain-to-cancel
+escalation, repeated/concurrent requesters, concurrent waiters, worker-origin
+request and wait behavior, restart boundaries, two-worker exactly-once
+contention, four-worker concurrent producer backpressure/accounting, and
+destruction safety. The existing ARMv7 SIMD fail-closed regression remains
+unchanged.
+
+Validation results:
+
+- focused strict-warning CPU build: passed;
+- focused CPU CTest: 5/5 passed;
+- CPU thread-pool repetition: 100/100 passed;
+- two-worker and four-worker stress: passed in every repeated test run;
+- concurrent producer accounting: exact in every repeated test run;
+- complete serial build: passed;
+- complete CTest: 29/29 passed;
+- focused ASan/UBSan: passed with leak detection disabled because LeakSanitizer
+  is unavailable under ptrace;
+- focused ThreadSanitizer: passed;
+- `git diff --check`: passed before the implementation commit.
+
+A sandboxed complete CTest rerun could not access the NVIDIA device and failed
+only the eight CUDA-dependent tests. The same build passed 29/29 unchanged with
+host GPU access.
+
+Running tasks are still cooperative. A permanently blocked task can prevent
+complete shutdown; finite waits report `timed_out` without changing the pool to
+stopped, forcing cancellation, or detaching workers. This checkpoint adds no
+execution-group collection, NUMA policy, affinity, work stealing, typed CPU
+kernels, automatic backend ownership, GPU/ACS/BOOT behavior, or robot changes.
+The recommended next checkpoint is CPU-7.2.2 — Execution-Group Pool
+Collection.
