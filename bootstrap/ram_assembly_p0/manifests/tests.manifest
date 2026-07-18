@@ -1,0 +1,11 @@
+# id|absolute-initramfs-path|timeout-ms|expected-result
+monotonic_clock|/tests/test_monotonic_clock|2000|pass
+anonymous_memory|/tests/test_anonymous_memory|2000|pass
+proc_available|/tests/test_proc_available|2000|pass
+sys_available|/tests/test_sys_available|2000|pass
+fork_exec_wait|/tests/test_fork_exec_wait|2000|pass
+timeout_enforcement|/tests/test_timeout_payload|250|timeout
+intentional_semantic_failure|/tests/test_intentional_failure|2000|semantic_fail
+launch_failure|/tests/does_not_exist|2000|launch_failure
+signal_termination|/tests/test_signal_payload|2000|signal
+nonsemantic_process_exit|/tests/test_process_exit|2000|process_exit
