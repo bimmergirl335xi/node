@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[[ "${EUID}" -ne 0 ]] || {
+    printf '%s\n' 'run kernel configuration inspection as an ordinary user' >&2
+    exit 1
+}
+
 if (($# != 1)); then
     printf 'usage: verify-kernel-config.sh /path/to/.config\n' >&2
     exit 2

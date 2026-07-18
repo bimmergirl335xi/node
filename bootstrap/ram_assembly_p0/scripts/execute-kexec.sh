@@ -15,6 +15,7 @@ kernel="$P0_ARTIFACTS_DIR/node-p0-bzImage"
 initramfs="$P0_ARTIFACTS_DIR/node-p0-initramfs.cpio.gz"
 cmdline_file="$P0_RECORDS_DIR/kernel-command-line.txt"
 loaded_inputs="$P0_RECORDS_DIR/kexec-loaded-inputs.sha256"
+kexec_binary="$(p0_resolve_system_binary /usr/sbin/kexec /sbin/kexec /usr/bin/kexec)"
 p0_verify_fixed_artifact "$kernel"
 p0_verify_fixed_artifact "$initramfs"
 p0_assert_beneath "$cmdline_file" "$NODE_P0_WORKSPACE"
@@ -34,8 +35,9 @@ printf 'kernel: %s\n' "$kernel" >&2
 printf 'initramfs: %s\n' "$initramfs" >&2
 printf 'command line: %s\n' "$kernel_cmdline" >&2
 printf 'No persistent installation or bootloader mutation will be performed.\n\n' >&2
+printf 'privileged input operation=kexec-execute executable=%s\n' "$kexec_binary" >&2
 
 p0_record kexec_execute attempting "explicit_operator_acknowledgement=true"
 sync -f "$P0_RECORDS_DIR/operations.jsonl" 2>/dev/null || true
-kexec -e
+p0_run_privileged_command "$kexec_binary" -e
 p0_die "kexec returned unexpectedly"

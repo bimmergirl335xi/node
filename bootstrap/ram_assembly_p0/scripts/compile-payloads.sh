@@ -4,6 +4,11 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly P0_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 
+[[ "${EUID}" -ne 0 ]] || {
+    printf '%s\n' 'run payload compilation as an ordinary user' >&2
+    exit 1
+}
+
 output_root=""
 host_validation=0
 

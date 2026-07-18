@@ -4,6 +4,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib/p0-common.sh
 source "${SCRIPT_DIR}/lib/p0-common.sh"
+p0_require_ordinary_user
 
 mount_requested=0
 size_mib="${NODE_P0_TMPFS_SIZE_MIB:-6144}"
@@ -36,10 +37,26 @@ if [[ -e "$workspace" ]] && findmnt -M "$workspace" >/dev/null 2>&1; then
     existing_type="$(findmnt -M "$workspace" -n -o FSTYPE | head -n 1)"
     [[ "$existing_type" == "tmpfs" ]] || p0_die "refusing existing non-tmpfs mount: $workspace"
 elif ((mount_requested)); then
-    p0_require_root
-    p0_require_command mount
-    mkdir -p -- "$workspace"
-    mount -t tmpfs -o "rw,exec,nosuid,nodev,mode=0700,size=${size_mib}M" \
+    workspace_parent="$(dirname -- "$workspace")"
+    [[ -d "$workspace_parent" ]] || p0_die "workspace parent is absent: $workspace_parent"
+    p0_assert_tmpfs_backing "$workspace_parent"
+    if [[ -e "$workspace" ]]; then
+        [[ -d "$workspace" ]] || p0_die "workspace exists and is not a directory: $workspace"
+        [[ -z "$(find "$workspace" -mindepth 1 -maxdepth 1 -print -quit)" ]] || \
+            p0_die "refusing to mount over a non-empty workspace: $workspace"
+    fi
+
+    owner_uid="$(id -u)"
+    owner_gid="$(id -g)"
+    install_binary="$(p0_resolve_system_binary /usr/bin/install /bin/install)"
+    mount_binary="$(p0_resolve_system_binary /usr/bin/mount /bin/mount)"
+    mount_options="rw,exec,nosuid,nodev,mode=0700,uid=${owner_uid},gid=${owner_gid},size=${size_mib}M"
+
+    p0_info "privileged input operation=create-mount-point target=$workspace uid=$owner_uid gid=$owner_gid"
+    p0_run_privileged_command "$install_binary" -d -m 0700 \
+        -o "$owner_uid" -g "$owner_gid" "$workspace"
+    p0_info "privileged input operation=mount-tmpfs source=node-p0-tmpfs target=$workspace options=$mount_options"
+    p0_run_privileged_command "$mount_binary" -t tmpfs -o "$mount_options" \
         node-p0-tmpfs "$workspace"
 else
     [[ -d "$workspace" ]] || p0_die "workspace absent; use --mount or create it on tmpfs: $workspace"

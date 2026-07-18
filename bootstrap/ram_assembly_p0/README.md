@@ -28,6 +28,23 @@ writes `/boot`, runs `make install`, runs host `modules_install`, changes a
 bootloader, modifies EFI variables, partitions media, installs packages, or
 automatically executes `kexec -e`.
 
+Run every P0 orchestration script as the ordinary user. Never invoke a complete
+P0 script with `sudo` or `sudo -E`. When a leaf operation genuinely needs
+privilege, the ordinary-user script prints its fully quoted command and all
+inputs, then invokes only that operation through `sudo`, `/usr/bin/env -i`, an
+explicit minimal `PATH` and locale, and a fully resolved system-binary path.
+
+The only privileged leaf operations are:
+
+- creation of the dedicated tmpfs mount-point directory, when absent;
+- mounting that dedicated tmpfs with the ordinary user's numeric UID and GID;
+- `kexec -l` after all inspection, validation, command-line construction, and
+  hashing have completed as the ordinary user;
+- `kexec -e` after ordinary-user revalidation and the explicit acknowledgement.
+
+Swap changes are not implemented here. They remain a separate operator action;
+P0 only reads `/proc/swaps` and refuses to continue while swap is active.
+
 The default workspace is:
 
 ```text
@@ -59,8 +76,8 @@ a first-proof profile, not a permanent universal Node kernel profile.
 
 The proof installs nothing. The host must already provide the Linux kernel
 build prerequisites, a C compiler capable of static linking, `git`, `cpio`,
-`gzip`, `findmnt`, and `kexec` for the load stage. The preflight script reports
-missing tools explicitly.
+`gzip`, `findmnt`, `sudo` for individual privilege boundaries, and `kexec` for
+the load stage. The preflight script reports missing tools explicitly.
 
 ## Operator sequence
 
@@ -70,7 +87,7 @@ failure-reporting reserve.
 
 ```sh
 export NODE_P0_WORKSPACE=/run/node-assembly-p0
-sudo -E bootstrap/ram_assembly_p0/scripts/create-ram-workspace.sh \
+bootstrap/ram_assembly_p0/scripts/create-ram-workspace.sh \
   --mount --size-mib 6144
 ```
 
@@ -110,17 +127,20 @@ bootstrap/ram_assembly_p0/scripts/validate-artifacts.sh
 Loading and executing are separate boundaries:
 
 ```sh
-sudo -E bootstrap/ram_assembly_p0/scripts/load-kexec.sh
-sudo -E bootstrap/ram_assembly_p0/scripts/execute-kexec.sh \
+bootstrap/ram_assembly_p0/scripts/load-kexec.sh
+bootstrap/ram_assembly_p0/scripts/execute-kexec.sh \
   --i-understand-control-transfers-now
 ```
 
 `load-kexec.sh` loads only the fixed kernel and initramfs paths whose digests
-were produced inside the verified tmpfs. It never executes them.
+were produced inside the verified tmpfs. All preparation runs as the ordinary
+user; only the printed, fully resolved `kexec -l` leaf command is elevated. It
+never executes the candidate.
 
 `execute-kexec.sh` revalidates tmpfs, swap, digests, and the command line,
-prints an immediate-transfer warning, and requires the explicit acknowledgement
-argument shown above. Codex must never invoke that command unattended.
+prints an immediate-transfer warning and exact clean-environment `kexec -e`
+command, and requires the explicit acknowledgement argument shown above. Only
+that final leaf command is elevated. Codex must never invoke it unattended.
 
 ## Candidate environment
 

@@ -4,6 +4,7 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib/p0-common.sh
 source "${SCRIPT_DIR}/lib/p0-common.sh"
+p0_require_ordinary_user
 
 stage=build
 if (($# > 0)); then
@@ -16,7 +17,7 @@ case "$stage" in
     *) p0_die "invalid preflight stage: $stage" ;;
 esac
 
-for command_name in awk findmnt grep head realpath sed sha256sum; do
+for command_name in awk findmnt grep head realpath sed sha256sum stat; do
     p0_require_command "$command_name"
 done
 
@@ -40,11 +41,6 @@ if [[ "$stage" == "source" || "$stage" == "build" ]]; then
         perl readelf sort timeout; do
         p0_require_command "$command_name"
     done
-fi
-
-if [[ "$stage" == "load" || "$stage" == "execute" ]]; then
-    p0_require_root
-    p0_require_command kexec
 fi
 
 for mutable_path in \

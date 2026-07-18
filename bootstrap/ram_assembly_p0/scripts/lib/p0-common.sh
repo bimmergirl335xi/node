@@ -69,6 +69,14 @@ p0_assert_tmpfs() {
     esac
 }
 
+p0_assert_tmpfs_backing() {
+    local path fs_type
+    path="$(p0_canonical_path "$1")"
+    [[ -e "$path" ]] || p0_die "path does not exist: $path"
+    fs_type="$(p0_mount_field "$path" FSTYPE)"
+    [[ "$fs_type" == "tmpfs" ]] || p0_die "path is not backed by tmpfs: $path ($fs_type)"
+}
+
 p0_assert_swap_disabled() {
     local active
     active="$(awk 'NR > 1 { count += 1 } END { print count + 0 }' /proc/swaps)"
@@ -135,8 +143,63 @@ p0_record() {
         "$kind" "$status" "$detail" >>"$records_file"
 }
 
-p0_require_root() {
-    [[ "${EUID}" -eq 0 ]] || p0_die "this stage requires root"
+p0_require_ordinary_user() {
+    [[ "${EUID}" -ne 0 ]] || p0_die \
+        "run the P0 orchestration as an ordinary user; only printed leaf commands may use privilege"
+}
+
+p0_resolve_system_binary() {
+    local candidate canonical mode
+    for candidate in "$@"; do
+        if [[ -f "$candidate" && -x "$candidate" ]]; then
+            canonical="$(realpath -e -- "$candidate")"
+            case "$canonical" in
+                /bin/* | /sbin/* | /usr/bin/* | /usr/sbin/*)
+                    mode="$(stat -Lc '%a' -- "$canonical")"
+                    [[ "$mode" =~ ^[0-7]+$ ]] || continue
+                    (((8#$mode & 0022) == 0)) || continue
+                    printf '%s\n' "$canonical"
+                    return 0
+                    ;;
+            esac
+        fi
+    done
+    p0_die "required fixed-path system binary unavailable: $*"
+}
+
+_p0_print_exact_command() {
+    local argument
+    printf 'NODE_P0 PRIVILEGED_COMMAND'
+    for argument in "$@"; do
+        printf ' %q' "$argument"
+    done
+    printf '\n'
+}
+
+p0_print_privileged_command() {
+    local sudo_binary env_binary
+    local -a command
+    sudo_binary="$(p0_resolve_system_binary /usr/bin/sudo /bin/sudo)"
+    env_binary="$(p0_resolve_system_binary /usr/bin/env /bin/env)"
+    command=(
+        "$sudo_binary" -- "$env_binary" -i
+        'PATH=/usr/sbin:/usr/bin:/sbin:/bin' 'LC_ALL=C' "$@"
+    )
+    _p0_print_exact_command "${command[@]}"
+}
+
+p0_run_privileged_command() {
+    local sudo_binary env_binary
+    local -a command
+    sudo_binary="$(p0_resolve_system_binary /usr/bin/sudo /bin/sudo)"
+    env_binary="$(p0_resolve_system_binary /usr/bin/env /bin/env)"
+    command=(
+        "$sudo_binary" -- "$env_binary" -i
+        'PATH=/usr/sbin:/usr/bin:/sbin:/bin' 'LC_ALL=C' "$@"
+    )
+
+    _p0_print_exact_command "${command[@]}"
+    "${command[@]}"
 }
 
 p0_verify_fixed_artifact() {

@@ -4,7 +4,7 @@ P0_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 HOST_BUILD_DIR ?= $(abspath $(P0_DIR)/../../build/ram-assembly-p0-host)
 HOST_ROOT := $(HOST_BUILD_DIR)/root
 
-.PHONY: all host-build host-test package inspect shell-syntax validate clean
+.PHONY: all host-build host-test package inspect privilege-model shell-syntax validate clean
 
 all: validate
 
@@ -45,7 +45,10 @@ shell-syntax:
 	find "$(P0_DIR)/scripts" -type f -name '*.sh' -print0 | \
 		xargs -0 -r -n1 bash -n
 
-validate: shell-syntax host-test inspect
+privilege-model:
+	"$(P0_DIR)/scripts/test-privilege-model.sh"
+
+validate: shell-syntax privilege-model host-test inspect
 	git -C "$(P0_DIR)" diff --check -- .
 
 clean:
