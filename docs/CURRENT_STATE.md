@@ -1018,3 +1018,54 @@ native ACS warnings.
 - No BOOT/rescue service or public BOOT document exists.
 - `lane/cpu` retains its unfinished shutdown-observability work beyond `main`;
   timed shutdown waiting remains unimplemented.
+
+## 2026-07-18 — GPU-7.1A Driver-Independent GPU Hardware Inventory
+
+GPU-7.1A introduces a bounded generic Linux PCI inventory in `src/hardware/`
+and a line-oriented `node_gpu_hardware_probe`. It compiles with an ordinary
+C++17 compiler and uses kernel-provided sysfs data without CUDA, NVML, libpci,
+udev development libraries, root privileges, networking, or external shell
+commands. The CMake entry point now enables CUDA targets only when requested
+and a CUDA compiler is actually available; generic hardware, CPU, runtime, and
+ACS targets remain buildable when CUDA is disabled or absent.
+
+The inventory reports checked PCI addresses, raw vendor/device/subsystem/class
+and optional revision values, PCI-class-derived device categories, convenience
+vendor families, and observable driver binding. It filters on relevant PCI
+classes rather than vendor identity, so an NVIDIA non-display device is not
+reported as a GPU-like device. A missing driver link means unbound; an unsafe
+or failed link observation remains unknown with a bounded issue. CUDA readiness
+is deliberately absent from the record.
+
+Configurable and absolute bounds cover scanned entries, retained devices,
+paths, identifiers, driver names, retained issues, and file reads. Results
+distinguish success, partial observation, unsupported platforms, unavailable
+roots, permission failures, malformed entries, resource exhaustion, I/O
+failure, and invalid options. Synthetic roots make every driverless fixture
+deterministic and independent of host hardware.
+
+Validation used tests on, benchmarks off, legacy vision off, and serial builds:
+
+- no-CUDA strict C++ build: 22/22 CTests passed;
+- synthetic PCI fixture: 100/100 consecutive runs passed;
+- standalone generic probe: success, 52 PCI entries scanned, two matching
+  devices, zero issues, and CUDA explicitly not evaluated;
+- CUDA 12.4 build for architectures `61;70;75`: 30/30 CTests passed with host
+  GPU access;
+- existing CUDA capability probe: passed for two Quadro RTX 4000 devices,
+  compute capability 7.5;
+- existing CUDA runtime-resource probe: passed;
+- strict native warnings: passed; existing CUDA shuffle/PTX and nvlink
+  diagnostics remain pre-existing and outside this checkpoint.
+
+The generic probe observed NVIDIA devices `10de:1eb1` at `0000:2d:00.0` and
+`0000:2e:00.0`, both class `0x030000` and bound to `nvidia`. This establishes
+only PCI hardware and driver-binding observations. It does not establish CUDA
+installation policy, health, backend admission, scheduler eligibility, or
+automatic package action.
+
+Known limitations are Linux sysfs scope, broad PCI-class classification without
+a marketing-name database, no IOMMU-group or topology model, and no correlation
+with CUDA runtime identities. The recommended next checkpoint is GPU-7.1B: a
+bounded evidence-correlation model that preserves independent hardware,
+driver, API, runtime, compatibility, and admission states.

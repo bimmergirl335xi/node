@@ -64,51 +64,53 @@ add_test(
 )
 
 
-add_executable(test_cuda_backend_registry
-    test_cuda_backend_registry.cu
-)
+if(TARGET prometheus_cuda_backend)
+    add_executable(test_cuda_backend_registry
+        test_cuda_backend_registry.cu
+    )
 
-target_link_libraries(test_cuda_backend_registry
-    PRIVATE
-        prometheus_cuda_backend
-        prometheus_cpu_backend
-)
+    target_link_libraries(test_cuda_backend_registry
+        PRIVATE
+            prometheus_cuda_backend
+            prometheus_cpu_backend
+    )
 
-target_compile_features(test_cuda_backend_registry PRIVATE cxx_std_17)
+    target_compile_features(test_cuda_backend_registry PRIVATE cxx_std_17)
 
-set_target_properties(test_cuda_backend_registry PROPERTIES
-    CUDA_STANDARD 17
-    CUDA_STANDARD_REQUIRED YES
-    CUDA_EXTENSIONS OFF
-)
+    set_target_properties(test_cuda_backend_registry PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED YES
+        CUDA_EXTENSIONS OFF
+    )
 
-add_test(
-    NAME prometheus_cuda_backend_registry
-    COMMAND test_cuda_backend_registry
-)
+    add_test(
+        NAME prometheus_cuda_backend_registry
+        COMMAND test_cuda_backend_registry
+    )
 
 
-add_executable(test_cuda_runtime_resources
-    test_cuda_runtime_resources.cu
-)
+    add_executable(test_cuda_runtime_resources
+        test_cuda_runtime_resources.cu
+    )
 
-target_link_libraries(test_cuda_runtime_resources
-    PRIVATE
-        prometheus_cuda_backend
-)
+    target_link_libraries(test_cuda_runtime_resources
+        PRIVATE
+            prometheus_cuda_backend
+    )
 
-target_compile_features(test_cuda_runtime_resources PRIVATE cxx_std_17)
+    target_compile_features(test_cuda_runtime_resources PRIVATE cxx_std_17)
 
-set_target_properties(test_cuda_runtime_resources PROPERTIES
-    CUDA_STANDARD 17
-    CUDA_STANDARD_REQUIRED YES
-    CUDA_EXTENSIONS OFF
-)
+    set_target_properties(test_cuda_runtime_resources PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED YES
+        CUDA_EXTENSIONS OFF
+    )
 
-add_test(
-    NAME prometheus_cuda_runtime_resources
-    COMMAND test_cuda_runtime_resources
-)
+    add_test(
+        NAME prometheus_cuda_runtime_resources
+        COMMAND test_cuda_runtime_resources
+    )
+endif()
 
 if(NOT TARGET prometheus_cuda_runtime_compilation)
     message(

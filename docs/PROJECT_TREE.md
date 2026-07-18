@@ -1,8 +1,8 @@
 # Node — Tracked Project Tree
 
-This is a compact view of the tracked repository after ACS-R001. Generated build
-directories and ignored runtime artifacts are omitted. Directories not shown
-must not be inferred to exist.
+This is a compact view of the tracked repository after GPU-7.1A. Generated
+build directories and ignored runtime artifacts are omitted. Directories not
+shown must not be inferred to exist.
 
 ```text
 node/
@@ -181,6 +181,10 @@ node/
 │   │   ├── shutdown_manager.cpp
 │   │   ├── task_scheduler.hpp
 │   │   └── task_scheduler.cpp
+│   ├── hardware/
+│   │   ├── CMakeLists.txt
+│   │   ├── linux_pci_inventory.hpp
+│   │   └── linux_pci_inventory.cpp
 │   ├── kernels/
 │   ├── diagnostics/
 │   ├── experiments/
@@ -228,6 +232,9 @@ node/
         │   ├── test_architecture_shadow.cpp
         │   └── test_proposal_abi.cpp
         ├── kernels/
+        ├── hardware/
+        │   ├── CMakeLists.txt
+        │   └── test_linux_pci_inventory.cpp
         └── protocol/
 ```
 

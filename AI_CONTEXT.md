@@ -468,3 +468,43 @@ explicitly requests a reconciliation or rewrite.
 Handoffs must preserve architecture decisions, completed work, validation,
 limitations, unfinished placeholders, exact commands, required files, and a
 clean next-step boundary.
+
+## 2026-07-18 — GPU-7.1A Driver-Independent Hardware Inventory
+
+GPU-7.1A adds a generic Linux PCI inventory below and outside the CUDA
+backend. `src/hardware/linux_pci_inventory.hpp` and
+`src/hardware/linux_pci_inventory.cpp` inspect only immediate entries beneath
+a configurable sysfs root, defaulting to `/sys/bus/pci/devices`. The component
+uses ordinary C++17 and POSIX file access; it does not include CUDA headers,
+link CUDA libraries, call a driver/runtime API, or invoke external commands.
+
+The value model preserves checked PCI addresses and raw numeric identity,
+classifies devices from PCI class codes, classifies known vendor families as a
+convenience, and reports bound, unbound, or unknown kernel-driver state.
+Hardware presence does not establish CUDA availability, health, compatibility,
+admission, or scheduling eligibility. All scans, retained devices, paths,
+identifiers, driver names, issues, and attribute reads have configurable and
+absolute bounds. Unavailable roots, malformed entries, partial observations,
+permission failures, I/O failures, and resource exhaustion remain explicit.
+
+Synthetic sysfs tests cover NVIDIA hardware without a driver, `nouveau`,
+`vfio-pci`, AMD and Intel devices, an NVIDIA non-GPU device, empty and missing
+roots, malformed data, bounded capacity, unknown vendors, failed driver-link
+resolution, optional identifiers, deterministic ordering, and invalid bounds.
+The ordinary-C++ no-CUDA build passed all 22 CTests under strict native
+warnings, and the inventory fixture passed 100 consecutive runs. Its standalone
+probe links no CUDA library and reports `CUDA_RUNTIME status=not_evaluated`.
+
+The validation host had CUDA 12.4 and two NVIDIA Quadro RTX 4000 devices. The
+generic probe observed them independently at `0000:2d:00.0` and
+`0000:2e:00.0`, both bound to the `nvidia` kernel driver. The CUDA-enabled
+serial build for architectures 61, 70, and 75 passed all 30 CTests with host
+GPU access. Existing CUDA capability and runtime-resource probes also passed.
+These CUDA results are separate corroborating evidence and are not fields or
+inferences in the generic inventory.
+
+This checkpoint adds no package installation, driver loading, runtime bridge,
+health monitoring, resource allocation, admission, scheduling, or executable
+GPU work. A recommended follow-up is a narrow GPU-7.1B evidence-correlation
+checkpoint that keeps physical hardware, driver binding, CUDA API presence,
+runtime enumeration, compatibility, and Node admission as distinct states.
