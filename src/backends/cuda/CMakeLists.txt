@@ -25,6 +25,7 @@ if(PROMETHEUS_CUDA_AVAILABLE)
         cuda_capabilities.cu
         cuda_device.cu
         cuda_device_pool.cu
+        cuda_evidence_adapter.cpp
         cuda_health.cu
         cuda_job_queue.cu
         cuda_kernel_registry.cu
@@ -41,6 +42,7 @@ if(PROMETHEUS_CUDA_AVAILABLE)
     target_link_libraries(prometheus_cuda_backend
         PUBLIC
             prometheus_backend_core
+            prometheus_gpu_evidence_correlation
             CUDA::cudart
     )
 
@@ -55,4 +57,16 @@ if(PROMETHEUS_CUDA_AVAILABLE)
 
     # Do not add an unconditional -ldl here. The current glibc/CUDA 12.4 bench
     # resolves dlopen from libc and nvlink rejects the compatibility libdl.a.
+
+    add_executable(cuda_evidence_correlation_probe
+        "${PROJECT_SOURCE_DIR}/tools/cuda_evidence_correlation_probe.cpp"
+    )
+
+    target_link_libraries(cuda_evidence_correlation_probe
+        PRIVATE
+            prometheus_cuda_backend
+            prometheus_linux_pci_inventory
+    )
+
+    target_compile_features(cuda_evidence_correlation_probe PRIVATE cxx_std_17)
 endif()

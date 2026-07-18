@@ -9,6 +9,22 @@ target_include_directories(prometheus_linux_pci_inventory
 
 target_compile_features(prometheus_linux_pci_inventory PUBLIC cxx_std_17)
 
+add_library(prometheus_gpu_evidence_correlation STATIC
+    gpu_evidence_correlation.cpp
+)
+
+target_include_directories(prometheus_gpu_evidence_correlation
+    PUBLIC
+        "${PROJECT_SOURCE_DIR}/src/hardware"
+)
+
+target_link_libraries(prometheus_gpu_evidence_correlation
+    PUBLIC
+        prometheus_linux_pci_inventory
+)
+
+target_compile_features(prometheus_gpu_evidence_correlation PUBLIC cxx_std_17)
+
 add_executable(node_gpu_hardware_probe
     "${PROJECT_SOURCE_DIR}/tools/node_gpu_hardware_probe.cpp"
 )

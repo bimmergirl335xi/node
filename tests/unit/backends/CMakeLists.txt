@@ -110,6 +110,22 @@ if(TARGET prometheus_cuda_backend)
         NAME prometheus_cuda_runtime_resources
         COMMAND test_cuda_runtime_resources
     )
+    add_executable(test_cuda_evidence_adapter
+        test_cuda_evidence_adapter.cpp
+    )
+
+    target_link_libraries(test_cuda_evidence_adapter
+        PRIVATE
+            prometheus_cuda_backend
+            prometheus_linux_pci_inventory
+    )
+
+    target_compile_features(test_cuda_evidence_adapter PRIVATE cxx_std_17)
+
+    add_test(
+        NAME prometheus_cuda_evidence_adapter
+        COMMAND test_cuda_evidence_adapter
+    )
 endif()
 
 if(NOT TARGET prometheus_cuda_runtime_compilation)
