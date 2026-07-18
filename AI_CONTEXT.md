@@ -530,3 +530,96 @@ detaching, or abandoning the worker. CPU-7.2.1A adds no affinity, NUMA routing,
 work stealing, execution-group collection, typed kernel, backend ownership,
 GPU, ACS, BOOT, robot, or neural-current behavior. The recommended next
 checkpoint is CPU-7.2.2 — Execution-Group Pool Collection.
+## 2026-07-18 — GPU-7.1A Driver-Independent Hardware Inventory
+
+GPU-7.1A adds a generic Linux PCI inventory below and outside the CUDA
+backend. `src/hardware/linux_pci_inventory.hpp` and
+`src/hardware/linux_pci_inventory.cpp` inspect only immediate entries beneath
+a configurable sysfs root, defaulting to `/sys/bus/pci/devices`. The component
+uses ordinary C++17 and POSIX file access; it does not include CUDA headers,
+link CUDA libraries, call a driver/runtime API, or invoke external commands.
+
+The value model preserves checked PCI addresses and raw numeric identity,
+classifies devices from PCI class codes, classifies known vendor families as a
+convenience, and reports bound, unbound, or unknown kernel-driver state.
+Hardware presence does not establish CUDA availability, health, compatibility,
+admission, or scheduling eligibility. All scans, retained devices, paths,
+identifiers, driver names, issues, and attribute reads have configurable and
+absolute bounds. Unavailable roots, malformed entries, partial observations,
+permission failures, I/O failures, and resource exhaustion remain explicit.
+
+Synthetic sysfs tests cover NVIDIA hardware without a driver, `nouveau`,
+`vfio-pci`, AMD and Intel devices, an NVIDIA non-GPU device, empty and missing
+roots, malformed data, bounded capacity, unknown vendors, failed driver-link
+resolution, optional identifiers, deterministic ordering, and invalid bounds.
+The ordinary-C++ no-CUDA build passed all 22 CTests under strict native
+warnings, and the inventory fixture passed 100 consecutive runs. Its standalone
+probe links no CUDA library and reports `CUDA_RUNTIME status=not_evaluated`.
+
+The validation host had CUDA 12.4 and two NVIDIA Quadro RTX 4000 devices. The
+generic probe observed them independently at `0000:2d:00.0` and
+`0000:2e:00.0`, both bound to the `nvidia` kernel driver. The CUDA-enabled
+serial build for architectures 61, 70, and 75 passed all 30 CTests with host
+GPU access. Existing CUDA capability and runtime-resource probes also passed.
+These CUDA results are separate corroborating evidence and are not fields or
+inferences in the generic inventory.
+
+This checkpoint adds no package installation, driver loading, runtime bridge,
+health monitoring, resource allocation, admission, scheduling, or executable
+GPU work. A recommended follow-up is a narrow GPU-7.1B evidence-correlation
+checkpoint that keeps physical hardware, driver binding, CUDA API presence,
+runtime enumeration, compatibility, and Node admission as distinct states.
+
+## 2026-07-18 — GPU-7.1B Bounded GPU Evidence Correlation
+
+GPU-7.1B is based exactly on GPU-7.1A commit
+`3561b12b3b2f292977253c77febe13e0c8d13167`. It adds an always-build pure
+correlation model in `src/hardware/gpu_evidence_correlation.*` and a
+CUDA-enabled mapping adapter in `src/backends/cuda/cuda_evidence_adapter.*`.
+The pure layer accepts already-observed metadata, includes no CUDA SDK header,
+links no CUDA library, performs no hardware query, and mutates no input or
+runtime state.
+
+Evidence remains independent for physical inventory, per-device kernel-driver
+binding, compile/runtime/driver software versions, CUDA enumeration, stable
+UUID, CUDA PCI identity, architecture and release compatibility, binary-image
+coverage, kernel-registry coverage, backend-registration readiness,
+runtime-binding usability, execution readiness, and Node admission. Admission
+is always `not_evaluated` in this checkpoint. Registration readiness does not
+imply kernel coverage, execution readiness, or admission.
+
+Full PCI identities match only when domain, bus, device, and function agree.
+When CUDA omits the domain, bus/device/function may produce an explicitly
+inferred match only if exactly one hardware candidate exists. Multiple
+candidates are ambiguous and are never resolved by order. Runtime devices with
+no usable PCI identity remain runtime-only. One physical function may retain
+multiple CUDA identities, provided each logical device remains independently
+addressable. Duplicate PCI identities, CUDA UUIDs or persistent keys, runtime
+ordinals, and unstable one-to-many associations are explicit conflicts.
+
+Ordering is deterministic: hardware records use numeric canonical PCI order;
+CUDA associations and runtime-only records use stable UUID, persistent key,
+PCI evidence, then runtime ordinal. Configurable and absolute bounds cover all
+input/retained records, associations, issues, stable identities, and retained
+diagnostic identity. Overlength stable identities are rejected without copying
+or truncating them into results.
+
+Strict no-CUDA validation passed 23/23 CTests. The A–T synthetic suite, which
+contains 36 input permutations per run, passed 100 consecutive runs. Dynamic
+dependency inspection found no CUDA library in the pure test or driverless
+probe. CUDA 12.4 validation for architectures 61, 70, and 75 passed 32/32
+CTests, including the host adapter test; existing capability and runtime-
+resource probes also passed.
+
+With normal visibility, the probe correlated `0000:2d:00.0` and
+`0000:2e:00.0` exactly to two stable CUDA UUIDs. With
+`CUDA_VISIBLE_DEVICES=` both PCI devices remained hardware-only while CUDA
+reported zero visible devices. With `CUDA_VISIBLE_DEVICES=0`, one stable UUID
+matched `0000:2d:00.0` exactly and `0000:2e:00.0` remained hardware-only.
+Runtime ordinals were not used as durable identity.
+
+GPU-7.1B adds no installation action, health policy, topology scheduling,
+memory allocation, kernel launch, MIG management, ACS admission, or private
+deployment policy. A recommended separately authorized follow-up is GPU-7.1C:
+bounded installer-facing driver/runtime library and package evidence that still
+does not install software or confuse presence with usability.
