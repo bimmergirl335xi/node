@@ -562,3 +562,68 @@ memory allocation, kernel launch, MIG management, ACS admission, or private
 deployment policy. A recommended separately authorized follow-up is GPU-7.1C:
 bounded installer-facing driver/runtime library and package evidence that still
 does not install software or confuse presence with usability.
+
+## 2026-07-18 — GPU-7.2A Device-Local Execution Worker
+
+GPU-7.2A starts exactly from `lane/gpu` commit
+`fef4e2d8803cf38935e59e217fc5e7cec349e89a` and is implemented on the single
+temporary branch `tmp/gpu-7-2a-execution-worker`. It adds a CUDA-conditional
+`CudaDeviceWorker`, typed launch-adapter contract, bounded actual-adapter
+registry, fixed synthetic FP32 adapter, focused worker test, and line-oriented
+execution probe. The temporary branch must be reviewed, fast-forwarded into
+`lane/gpu` by the operator, and then deleted locally and remotely.
+
+One explicitly constructed worker binds one durable UUID-based CUDA device key
+to a freshly resolved runtime ordinal snapshot. Its worker thread calls
+`cudaSetDevice`, creates one `cudaStreamNonBlocking` stream and one
+`cudaEventDisableTiming` event, initializes device-local adapters, and only then
+publishes idle/accepting state. Runtime ordinals remain temporary evidence and
+are never used as durable identity. `CudaBackend` does not create workers
+automatically.
+
+The actual adapter registry remains distinct from `CudaKernelRegistry`
+metadata. Exact kernel-ID resolution requires both complete executable
+metadata and an initialized actual adapter. The executable probe ID is
+`probe.synthetic.execute.fp32`; its adapter owns exactly eight FP32 input and
+output elements, submits host-to-device copy, existing ReLU launch, and
+device-to-host copy on the worker stream, then validates every output only
+after the worker records and synchronizes its completion event.
+
+The queue path is `submit → claim_next → mark_running → launch → event record →
+event completion → adapter validation → complete`, preserving the original
+nonzero claim token throughout. Truthful adapter or validation errors use
+`fail` exactly once. Missing adapters, non-executable metadata, controlled
+launch failures, and output mismatches are job-local. Device binding, stream,
+event, adapter initialization, completion-context, and terminal-transition
+failures stop the worker conservatively.
+
+Submissions use a worker wrapper that rejects wrong-device or inactive work,
+delegates descriptor validation to the existing queue, and increments a
+bounded notification generation plus a pending-notification predicate only
+after successful submission. The worker holds its lifecycle mutex across the
+queue inspection and condition-variable wait transition, preventing lost
+wakeups without polling. Stop rejects new submissions, prevents new claims,
+finishes an already-running job, and leaves unclaimed shared-queue jobs queued.
+No thread is detached. A normally stopped object may restart after complete
+adapter/event/stream cleanup; it re-resolves its ordinal from the supplied pool
+snapshot and retains cumulative counters.
+
+Strict CUDA-disabled validation remained 23/23 CTests. CUDA 12.4 serial
+validation for architectures `61;70;75` passed 33/33 CTests. The focused worker
+suite passed 100 consecutive host-backed runs. With both Quadro RTX 4000
+devices visible, the probe completed 16/16 jobs: eight on
+`cuda:GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b` and eight on
+`cuda:GPU-4ced1003-8696-6957-d524-1539252d8c8d`. With
+`CUDA_VISIBLE_DEVICES=0`, the retained UUID completed 8/8 at ordinal snapshot
+zero. With empty visibility, the probe reported `no_devices` without creating
+a worker. Every probe worker joined and reported its stream, event, and adapter
+resources destroyed. Existing capability and runtime-resource probes passed;
+NVIDIA Compute Sanitizer memcheck reported zero errors for the two-device
+probe. Pre-existing CUDA shuffle/PTX and nvlink diagnostics remain unchanged.
+
+GPU-7.2A adds no scheduler, work stealing, multi-GPU job, arbitrary payload,
+memory-lease resolution, memory-pool integration, generated kernel execution,
+retry, migration, MIG, ACS admission, or deployment policy. A cooperative CUDA
+operation that never completes can still delay stop because GPU-7.2A uses a
+blocking event wait on its device thread. The recommended next checkpoint is
+GPU-7.2B: bounded execution payload and memory-lease resolution.

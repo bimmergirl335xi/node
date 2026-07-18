@@ -1134,3 +1134,84 @@ allocation, topology scheduling, MIG management, ACS admission, or private
 deployment policy was added. The recommended next checkpoint is a separately
 authorized GPU-7.1C installer-evidence layer for bounded driver/runtime library
 and package observations without installation or readiness inference.
+
+## 2026-07-18 — GPU-7.2A Device-Local Execution Worker
+
+GPU-7.2A is based exactly on `lane/gpu` commit
+`fef4e2d8803cf38935e59e217fc5e7cec349e89a` and uses only
+`tmp/gpu-7-2a-execution-worker`. It introduces the first governed CUDA
+execution path without changing `CudaBackend` into a scheduler or altering the
+GPU-7.1A/GPU-7.1B inventory and correlation semantics.
+
+The CUDA-conditional implementation consists of:
+
+- `cuda_kernel_adapter.*`: typed adapter lifecycle and bounded device-local
+  actual-adapter registry, separate from kernel metadata;
+- `cuda_device_worker.*`: one durable device key, copied pool evidence,
+  borrowed shared queue and metadata registry, one worker thread, one
+  non-blocking stream, one timing-disabled completion event, bounded issues,
+  terminal waits, and lifecycle snapshots;
+- `probe.synthetic.execute.fp32`: an actual eight-element FP32 ReLU adapter
+  using the existing activation kernel on the worker-owned stream;
+- `test_cuda_device_worker.cpp`: adapter, lifecycle, failure, queue, restart,
+  visibility-supporting, and two-device tests;
+- `cuda_device_worker_probe.cpp`: bounded multi-device execution diagnostics.
+
+Worker startup validates the UUID-based persistent key against the supplied
+pool snapshot, requires registration readiness and a matched runtime binding,
+and captures the current ordinal only after durable-key resolution. The worker
+thread performs `cudaSetDevice` before stream, event, or adapter creation.
+Metadata reporting `adapter_available` does not prove an actual adapter exists;
+the worker separately requires exact metadata compatibility and exact lookup of
+an initialized adapter instance.
+
+Accepted work follows `queued → claimed → running → completed` only after
+event synchronization and typed output validation. The claim token returned by
+`claim_next` is retained for `mark_running`, `complete`, or `fail`. Missing
+actual adapters, invalid metadata binding, controlled launch failures, and
+validation mismatches produce job failure without false completion. Device
+selection, stream/event creation, adapter initialization, unrecoverable CUDA
+completion, and queue-terminal transition failures fail the worker.
+
+The wrapper submission path rejects another device key or an inactive worker,
+uses the existing queue validation, and notifies only after success. A pending
+notification predicate accompanies the saturating generation counter. Queue
+inspection and condition-variable wait entry share the worker mutex, so a
+successful wrapper submission cannot be lost between inspection and sleep.
+Production execution uses no polling sleep.
+
+Stop first disables submissions, then prevents another claim. A claim already
+owned by the worker reaches a truthful terminal state; unclaimed shared-queue
+jobs remain queued and are not silently cancelled. Adapter resources, event,
+and stream are destroyed by the device thread before it exits, and callers
+join rather than detach. A normally stopped worker may restart after complete
+cleanup. The durable key is unchanged, the ordinal is re-resolved from the
+supplied pool evidence, no current job is retained, and counters are cumulative.
+
+Validation results:
+
+- strict CUDA-disabled serial build: 23/23 CTests passed;
+- CUDA 12.4 serial build for `61;70;75`: 33/33 CTests passed with host access;
+- focused worker suite: 100/100 consecutive host-backed runs passed;
+- full visibility: two workers, 16 submitted, 16 completed, zero failed;
+- device `cuda:GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b`: eight jobs on
+  ordinal snapshot 0;
+- device `cuda:GPU-4ced1003-8696-6957-d524-1539252d8c8d`: eight jobs on
+  ordinal snapshot 1;
+- `CUDA_VISIBLE_DEVICES=0`: retained durable UUID, ordinal snapshot 0, 8/8
+  completed;
+- `CUDA_VISIBLE_DEVICES=`: truthful `no_devices`, no worker created, no crash;
+- existing capability and runtime-resource probes: passed;
+- NVIDIA Compute Sanitizer memcheck: zero errors for the two-device probe;
+- strict native warnings: passed; pre-existing CUDA shuffle/PTX and nvlink
+  warnings remain outside this checkpoint;
+- every probe worker joined with stream, event, and adapter cleanup reported.
+
+Known limitations are one stream and one job at a time per explicitly created
+worker, fixed synthetic payload only, no general memory-lease interpretation,
+and no bounded stop timeout for a CUDA operation that never completes. There
+is no automatic retry, migration, cross-device work stealing, memory-pool
+integration, scheduler, generated-code execution, MIG control, ACS admission,
+or private deployment policy. The temporary branch must be fast-forwarded and
+deleted by the operator after review. The recommended next checkpoint is
+GPU-7.2B — Bounded Execution Payload and Memory-Lease Resolution.
