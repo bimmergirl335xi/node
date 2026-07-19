@@ -53,6 +53,13 @@ Those decisions require explicit results from their owning architecture. The
 public-only assembly path remains complete when no external manifest is
 supplied.
 
+RAM Assembly P0 is governed by its public `AUTHORITY_NOT_REQUIRED` conformance
+contract. That declaration applies only to disposable, tmpfs-only,
+non-production mechanism proof. Its provider outputs remain ASM candidates
+and cannot become KRN artifact acceptance, BOOT artifact acceptance,
+generation members, installation input, activation or recovery material,
+runtime-ready code, or normal Node code.
+
 ## Kernel source boundary
 
 Linux kernel source remains external. RAM Assembly P0 accepts an explicitly

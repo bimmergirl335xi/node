@@ -86,7 +86,11 @@ initramfs="$P0_ARTIFACTS_DIR/node-p0-initramfs.cpio.gz"
 
 [[ -s "$initramfs" ]] || p0_die "initramfs output is empty"
 initramfs_digest="$(sha256sum "$initramfs" | awk '{ print $1 }')"
+initramfs_size="$(stat -Lc '%s' -- "$initramfs")"
 printf '%s  %s\n' "$initramfs_digest" node-p0-initramfs.cpio.gz \
     >"$P0_ARTIFACTS_DIR/initramfs.sha256"
+p0_write_candidate_output_record initramfs asm_candidate_initramfs_image \
+    "$initramfs" "$initramfs_digest" "$initramfs_size" \
+    produced_not_yet_provider_validated 1 candidate_retained_in_tmpfs
 p0_record initramfs_build candidate_produced "sha256=$initramfs_digest shell=absent"
 p0_info "candidate initramfs output produced: $initramfs"

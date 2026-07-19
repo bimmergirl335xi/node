@@ -4,7 +4,7 @@ P0_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 HOST_BUILD_DIR ?= $(abspath $(P0_DIR)/../../build/ram-assembly-p0-host)
 HOST_ROOT := $(HOST_BUILD_DIR)/root
 
-.PHONY: all host-build host-test component-manifest-test package inspect privilege-model shell-syntax validate clean
+.PHONY: all host-build host-test component-manifest-test provider-record-test package inspect privilege-model shell-syntax validate clean
 
 all: validate
 
@@ -54,6 +54,19 @@ component-manifest-test: host-build
 	fi
 	grep -F '"failure":"incompatible_abi"' \
 		"$(HOST_BUILD_DIR)/component-manifest-incompatible.out"
+	grep -F '"declaration_state":"declaration_abi_incompatible"' \
+		"$(HOST_BUILD_DIR)/component-manifest-incompatible.out"
+
+provider-record-test:
+	mkdir -p "$(HOST_BUILD_DIR)/provider-record-examples"
+	install -m 0644 "$(P0_DIR)/contracts/p0-conformance-authority-v1.json" \
+		"$(HOST_BUILD_DIR)/provider-record-examples/p0-conformance-authority-v1.json"
+	cp -f "$(P0_DIR)"/records/examples/*.json \
+		"$(HOST_BUILD_DIR)/provider-record-examples/"
+	"$(P0_DIR)/scripts/validate-provider-records.sh" --host-validation \
+		--records "$(HOST_BUILD_DIR)/provider-record-examples"
+	python3 "$(P0_DIR)/tests/validate_provider_records.py" \
+		"$(HOST_BUILD_DIR)/provider-record-examples"
 
 package: host-build
 	mkdir -p "$(HOST_BUILD_DIR)/artifacts"
@@ -77,7 +90,7 @@ shell-syntax:
 privilege-model:
 	"$(P0_DIR)/scripts/test-privilege-model.sh"
 
-validate: shell-syntax privilege-model host-test component-manifest-test inspect
+validate: shell-syntax privilege-model host-test component-manifest-test provider-record-test inspect
 	git -C "$(P0_DIR)" diff --check -- .
 
 clean:

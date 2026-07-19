@@ -68,5 +68,20 @@ git -C "$P0_ROOT_DIR/../.." diff --check
     sha256sum "$P0_RECORDS_DIR/resolved-kernel.config"
     sha256sum "$P0_TEST_OUTPUT_DIR/host-manifest-validation.jsonl"
 } >"$P0_RECORDS_DIR/artifact-validation-inputs.sha256"
-p0_record artifact_validation satisfied "kernel=verified initramfs=verified manifest=passed"
-p0_info "candidate artifacts and host-side manifest semantics validated"
+kernel_digest="$(sha256sum "$kernel" | awk '{ print $1 }')"
+kernel_size="$(stat -Lc '%s' -- "$kernel")"
+initramfs_digest="$(sha256sum "$initramfs" | awk '{ print $1 }')"
+initramfs_size="$(stat -Lc '%s' -- "$initramfs")"
+p0_write_candidate_output_record kernel asm_candidate_kernel_image \
+    "$kernel" "$kernel_digest" "$kernel_size" \
+    provider_validated_for_p0_conformance_only 2 control_transfer_not_evaluated
+p0_write_candidate_output_record initramfs asm_candidate_initramfs_image \
+    "$initramfs" "$initramfs_digest" "$initramfs_size" \
+    provider_validated_for_p0_conformance_only 2 control_transfer_not_evaluated
+p0_write_provider_operation_record \
+    completed_with_candidate_outputs pending_tmpfs_disposal \
+    candidate_outputs_retained_control_transfer_not_evaluated
+"${SCRIPT_DIR}/validate-provider-records.sh" --records "$P0_RECORDS_DIR"
+p0_record candidate_output_validation satisfied \
+    "kernel=provider_validated initramfs=provider_validated scope=p0_conformance_only"
+p0_info "ASM provider records and candidate outputs validated for P0 conformance only"

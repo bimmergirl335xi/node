@@ -45,6 +45,8 @@ p0_run_privileged_command "$kexec_binary" -l "$kernel" \
     sha256sum "$initramfs"
     sha256sum "$P0_RECORDS_DIR/kernel-command-line.txt"
 } >"$P0_RECORDS_DIR/kexec-loaded-inputs.sha256"
+p0_write_control_transfer_record loaded_not_executed \
+    candidate_kernel_and_initramfs_loaded_in_memory
 p0_record kexec_load satisfied "kernel=$kernel initramfs=$initramfs"
 p0_info "candidate loaded; control has NOT transferred"
 p0_info "explicit ordinary-user execute command: $P0_ROOT_DIR/scripts/execute-kexec.sh --i-understand-control-transfers-now"

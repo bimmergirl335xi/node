@@ -16,6 +16,30 @@ It does **not** establish that Node was assembled, that an artifact or assembly
 generation was accepted, that installation or activation completed, that
 recovery completed, or that the normal runtime is ready.
 
+## Conformance authority
+
+The owning public contract is
+`contracts/p0-conformance-authority-v1.json`, identity
+`node.ram-assembly-p0.conformance-authority`, revision 1. It explicitly
+declares `AUTHORITY_NOT_REQUIRED` because P0 is an isolated, disposable,
+non-production conformance operation. The declaration does not grant ordinary
+build or installation authority and cannot be generalized to another source,
+profile, toolchain, target, operation, attempt, or output.
+
+The contract bounds permitted kernel-source, configuration, and test inputs;
+candidate-output classes; tmpfs capacity; provider invocation time; build
+concurrency; test count and duration; optional payload count; command-line
+size; candidate hold time; and control transfers. Mutable state and candidate
+outputs remain tmpfs-only. Disposal requires unmounting the dedicated tmpfs or
+rebooting after review; candidates remain ineligible while cleanup is pending.
+
+P0 prohibits production mutation, installation, generation membership,
+activation, propagation, persistent candidate retention, execution as normal
+Node code, production-material use, and replacement of an authorized build.
+No BOOT recovery plan, BOOT semantic operation, accepted KRN artifact, BOOT
+scoped artifact acceptance, assembly generation, installed instance,
+activation result, recovery result, or runtime-readiness result exists in P0.
+
 ## Safety boundary
 
 All mutable build, source-checkout, tool-cache, temporary, test, evidence, and
@@ -77,7 +101,8 @@ a first-proof profile, not a permanent universal Node kernel profile.
 The proof installs nothing. The host must already provide the Linux kernel
 build prerequisites, a C compiler capable of static linking, `git`, `cpio`,
 `gzip`, `findmnt`, `sudo` for individual privilege boundaries, and `kexec` for
-the load stage. The preflight script reports missing tools explicitly.
+the load stage. Host-side JSON record validation additionally requires
+`python3`. The preflight script reports missing operational tools explicitly.
 
 ## Operator sequence
 
@@ -146,6 +171,22 @@ both is rejected. The validated manifest is copied into RAM as inert candidate
 data. PID 1 does not read or execute it, and validation grants no acceptance,
 generation membership, authority, activation, or readiness.
 
+## Provider and candidate-output evidence
+
+At workspace initialization P0 copies its authority contract into tmpfs and
+creates distinct conformance-operation, ASM provider-operation, and ASM
+provider-attempt identities. Source selection, configuration, toolchains,
+resource limits and outcomes, kernel output, initramfs output, validation,
+cleanup state, and unresolved effects are retained as bounded JSON records in
+`$NODE_P0_WORKSPACE/records`.
+
+The kernel and initramfs records are `asm_candidate_kernel_image` and
+`asm_candidate_initramfs_image` provider outputs only. Digests and P0
+validation do not promote them into a KRN artifact, BOOT acceptance, an
+assembly generation, installation or activation material, recovery evidence,
+runtime-ready code, or normal Node code. `validate-artifacts.sh` validates
+that record boundary as part of its ordinary-user work.
+
 Loading and executing are separate boundaries:
 
 ```sh
@@ -211,7 +252,8 @@ Repository-side validation does not perform a RAM-only kernel build or load
 shell syntax, packages and inspects a host initramfs, runs the exact manifest
 parser/result engines, exercises the no-external-manifest path, rejects
 malformed and incompatible external declarations, and proves the expected
-timeout and intentional failure:
+timeout and intentional failure. It also validates example P0 provider and
+candidate-output JSON records:
 
 ```sh
 make -C assembly/ram_assembly_p0 validate

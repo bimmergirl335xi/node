@@ -45,6 +45,7 @@ source_count=0
 
 "${SCRIPT_DIR}/preflight.sh" --stage source
 p0_export_ram_environment
+provider_timeout_seconds="$(p0_provider_timeout_seconds)"
 
 if [[ -e "$P0_SOURCE_DIR/.git" ]] || find "$P0_SOURCE_DIR" -mindepth 1 -print -quit | grep -q .; then
     p0_die "RAM kernel-source destination is not empty: $P0_SOURCE_DIR"
@@ -55,25 +56,35 @@ if [[ -n "$local_source" ]]; then
     local_source="$(p0_canonical_path "$local_source")"
     [[ -d "$local_source/.git" ]] || p0_die "local source is not a Git checkout: $local_source"
     p0_assert_tmpfs "$NODE_P0_WORKSPACE"
-    git clone --no-hardlinks --no-checkout -- "$local_source" "$P0_SOURCE_DIR"
+    timeout --signal=TERM --kill-after=30s "${provider_timeout_seconds}s" \
+        git clone --no-hardlinks --no-checkout -- "$local_source" "$P0_SOURCE_DIR"
+    source_class=explicit_local_git_checkout
     source_description="local:$local_source"
 elif [[ -n "$source_bundle" ]]; then
     source_bundle="$(p0_canonical_path "$source_bundle")"
     [[ -f "$source_bundle" ]] || p0_die "kernel source bundle unavailable: $source_bundle"
     git bundle verify "$source_bundle" >/dev/null
-    git clone --no-checkout -- "$source_bundle" "$P0_SOURCE_DIR"
+    timeout --signal=TERM --kill-after=30s "${provider_timeout_seconds}s" \
+        git clone --no-checkout -- "$source_bundle" "$P0_SOURCE_DIR"
+    source_class=explicit_git_source_bundle
     source_description="bundle:$source_bundle"
 else
-    git clone --no-checkout -- "$remote_url" "$P0_SOURCE_DIR"
+    timeout --signal=TERM --kill-after=30s "${provider_timeout_seconds}s" \
+        git clone --no-checkout -- "$remote_url" "$P0_SOURCE_DIR"
+    source_class=explicit_repository_url
     source_description="url:$remote_url"
 fi
 
-git -C "$P0_SOURCE_DIR" checkout --detach -- "$kernel_ref"
+timeout --signal=TERM --kill-after=30s "${provider_timeout_seconds}s" \
+    git -C "$P0_SOURCE_DIR" checkout --detach -- "$kernel_ref"
 kernel_revision="$(git -C "$P0_SOURCE_DIR" rev-parse HEAD)"
 git -C "$P0_SOURCE_DIR" diff --quiet
 git -C "$P0_SOURCE_DIR" diff --cached --quiet
 
 printf '%s\n' "$kernel_revision" >"$P0_RECORDS_DIR/kernel-source-revision.txt"
 printf '%s\n' "$source_description" >"$P0_RECORDS_DIR/kernel-source-origin.txt"
+printf '%s\n' \
+    "{\"schema\":\"node.p0.kernel-source-input.v1\",\"record_revision\":1,\"p0_conformance_operation_identity\":\"$(p0_json_escape "$P0_CONFORMANCE_OPERATION_ID")\",\"input_class\":\"$source_class\",\"input_reference\":\"$(p0_json_escape "$source_description")\",\"reviewed_kernel_source_revision\":\"$kernel_revision\",\"ram_checkout_handle\":\"$(p0_json_escape "$P0_SOURCE_DIR")\",\"retention\":\"tmpfs_only\",\"downstream_status\":\"provider_input_only\"}" \
+    >"$P0_RECORDS_DIR/kernel-source-input.json"
 p0_record kernel_source obtained "revision=$kernel_revision source=$source_description"
 p0_info "kernel source copied into RAM at revision: $kernel_revision"

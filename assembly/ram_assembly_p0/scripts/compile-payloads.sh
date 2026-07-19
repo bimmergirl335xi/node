@@ -53,6 +53,7 @@ command -v "$cc_command" >/dev/null 2>&1 || {
     printf 'C compiler unavailable: %s\n' "$cc_command" >&2
     exit 1
 }
+cc_path="$(realpath -e -- "$(command -v "$cc_command")")"
 
 mkdir -p -- \
     "$output_root/bin" \
@@ -108,5 +109,11 @@ for executable in \
         exit 1
     fi
 done
+
+if ((host_validation == 0)); then
+    printf '%s\n' \
+        "{\"schema\":\"node.p0.toolchain-identity.v1\",\"record_revision\":1,\"provider_identity\":\"$P0_ASM_PROVIDER_ID\",\"toolchain_scope\":\"initramfs_static_payloads\",\"compiler_path\":\"$(p0_json_escape "$cc_path")\",\"compiler_version\":\"$(p0_json_escape "$($cc_path --version | head -n 1)")\",\"compile_mode\":\"strict_c11_static\"}" \
+        >"$P0_RECORDS_DIR/payload-toolchain-identity.json"
+fi
 
 printf 'NODE_P0 PAYLOAD static strict C compilation passed\n'

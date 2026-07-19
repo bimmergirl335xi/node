@@ -37,6 +37,8 @@ printf 'command line: %s\n' "$kernel_cmdline" >&2
 printf 'No persistent installation or bootloader mutation will be performed.\n\n' >&2
 printf 'privileged input operation=kexec-execute executable=%s\n' "$kexec_binary" >&2
 
+p0_write_control_transfer_record execution_attempting \
+    control_transfer_result_will_be_unavailable_if_transfer_succeeds
 p0_record kexec_execute attempting "explicit_operator_acknowledgement=true"
 sync -f "$P0_RECORDS_DIR/operations.jsonl" 2>/dev/null || true
 p0_run_privileged_command "$kexec_binary" -e
