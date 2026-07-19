@@ -1,0 +1,16 @@
+manifest_version=1
+manifest_identity=node-p01-launch-failure-v1
+service_begin
+identity=missing_executable
+revision=p01-test:missing_executable:1
+executable=/node/services/missing_executable
+stage=early_environment
+required=true
+timeout_ms=1000
+expected_result=exit_zero
+dependencies=
+restart_policy=none
+maximum_restart_count=0
+arguments=
+environment=LANG=C,LC_ALL=C
+service_end

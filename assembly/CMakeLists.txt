@@ -37,6 +37,8 @@ target_compile_options(
         -Werror
 )
 
+add_subdirectory(micro_os)
+
 if(PROMETHEUS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

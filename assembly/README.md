@@ -21,7 +21,10 @@ under `assembly/`.
 
 - `ram_assembly_p0/` is the bounded RAM-only kernel and initramfs mechanism
   proof.
-- `micro_os/` states the early-userspace responsibility boundary.
+- `micro_os/` contains the bounded permanent C11 PID 1, startup-manifest
+  parser, and public P01 supervisor probes.
+- `p01_boot/` contains non-destructive P01 candidate-image construction and
+  boot-proof tooling.
 - `init/` states PID 1 sequencing and handoff requirements.
 - `profiles/` describes public, replaceable assembly inputs.
 - `manifests/public/` defines the bounded external-component declaration
