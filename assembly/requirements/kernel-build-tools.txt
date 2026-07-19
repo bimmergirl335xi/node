@@ -1,0 +1,45 @@
+# Linux kernel configuration and x86_64 bzImage construction
+bash
+make
+gcc
+ld
+binutils (objcopy, readelf)
+bc
+bison
+flex
+perl
+openssl
+libssl development headers
+libelf development headers
+
+# Configuration-dependent kernel build helpers
+pahole/dwarves (BTF-enabled configurations)
+rsync (kernel targets that stage file trees)
+bzip2, gzip, lz4, xz, zstd (selected compression formats)
+
+# P0 static initramfs payload construction
+C11 compiler with static libc link support
+cpio with newc, NUL-input, owner, and reproducible options
+gzip
+find and sort with NUL-delimited operation
+file
+readelf
+sha256sum
+
+# P0 workspace and controlled transfer boundary
+tmpfs-capable Linux host
+findmnt
+mount (privileged leaf operation only)
+sudo (minimal clean environment for privileged leaf operations only)
+kexec-tools (kexec -l and separately acknowledged kexec -e only)
+
+# P0 source and record handling
+git with bundle support
+python3 (host-side JSON record validation)
+lspci (optional Dell Wyse 5070 PCI evidence)
+
+# Current P0 target boundary
+x86_64 host and x86_64 Linux kernel source
+at least 3072 MiB available RAM by default
+dedicated tmpfs between 1024 and 65536 MiB
+serial kernel build (--jobs=1)

@@ -1,0 +1,59 @@
+# Mandatory CPU-only configure/build/test
+cmake >= 3.24
+ctest (from CMake; test-only)
+C11 compiler and linker
+C++17 compiler and linker
+make or another CMake-supported build tool
+POSIX threads development support
+
+# Source and reporting utilities
+git
+sha256sum
+
+# Optional CUDA build/runtime validation
+nvcc (CUDA compiler)
+CUDAToolkit headers and libraries
+NVIDIA driver and compatible device (runtime tests only)
+nvidia-smi (diagnostic probe only)
+compute-sanitizer (optional device validation)
+
+# RAM Assembly P0 ordinary-user tools
+awk
+bash
+bc
+bison
+cpio
+file
+find
+findmnt
+flex
+gcc
+git
+grep
+gzip
+ld
+make
+objcopy
+openssl
+perl
+readelf
+realpath
+sed
+sort
+stat
+timeout
+xargs
+python3 (provider-record validation only)
+lspci (optional hardware evidence)
+
+# RAM Assembly P0 privileged leaf-operation tools
+mount
+sudo
+kexec
+
+# Planned P01 USB-image candidates; not current requirements
+loop-device tooling
+partition-table tooling
+FAT and Linux filesystem construction tools
+UEFI/BIOS bootloader image tooling
+offline image inspection and checksum tools

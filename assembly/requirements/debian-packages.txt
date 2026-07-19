@@ -1,0 +1,49 @@
+# Mandatory public CPU-only build and tests
+build-essential
+cmake
+git
+
+# RAM Assembly P0 and Linux kernel build
+bc
+binutils
+bison
+coreutils
+cpio
+file
+findutils
+flex
+gzip
+kexec-tools
+libelf-dev
+libssl-dev
+openssl
+perl
+python3
+sudo
+util-linux
+
+# Optional P0 evidence
+pciutils
+
+# Conditional kernel configuration/compression support
+bzip2
+dwarves
+lz4
+rsync
+xz-utils
+zstd
+
+# Optional CUDA: use the NVIDIA CUDA Toolkit repository/package family that
+# matches toolchain-matrix.md. No one Debian package name is portable across
+# supported CUDA release families.
+
+# Planned P01 candidates only; do not install for P0 or this cleanup
+dosfstools
+e2fsprogs
+gdisk
+grub-efi-amd64-bin
+grub-pc-bin
+mtools
+parted
+syslinux-common
+xorriso

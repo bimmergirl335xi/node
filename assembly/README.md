@@ -27,6 +27,8 @@ under `assembly/`.
 - `manifests/public/` defines the bounded external-component declaration
   format and carries a non-operational example.
 - `providers/` implements public manifest parsing and validation.
+- `requirements/` inventories host, kernel, P0, optional CUDA, test, and
+  planned P01 USB-image tooling without installing it.
 - `tests/` contains ABI, parser, public-only, and negative-path conformance
   coverage.
 - `../interfaces/` contains the versioned C-compatible component ABI.
