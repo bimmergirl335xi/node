@@ -1018,3 +1018,61 @@ native ACS warnings.
 - No BOOT/rescue service or public BOOT document exists.
 - `lane/cpu` retains its unfinished shutdown-observability work beyond `main`;
   timed shutdown waiting remains unimplemented.
+
+## 2026-07-19 — Permanent-Lane Reconciliation Checkpoint
+
+Repository evidence was preserved before reconciliation, including all refs,
+worktrees, stashes, branch heads, upstreams, merge relationships, and a
+verified all-refs Git bundle. No branch, ref, stash, checkout, worktree,
+untracked file, build artifact, or file tree was deleted.
+
+The permanent local branch set is now `main`, `lane/runtime`, `lane/docs`,
+`lane/cpu`, `lane/gpu`, `lane/apu`, `lane/phi`, `lane/codex`, and `lane/tmp`.
+The APU, Phi, Codex, and quarantine lanes were created from reviewed `main`.
+The public branch rules are recorded in `docs/BRANCH_POLICY.md`.
+
+Reconciled checkpoints are:
+
+- CPU-7.2.1A at `db7bc8416d1d9b6376bef03bb8c6a56171aa9123`
+  on `lane/cpu`;
+- GPU-7.2A at `69db2785c6b33b6462018756570dcb13f1037f37`
+  on `lane/gpu`;
+- RAM Assembly P0 reviewed head
+  `4bb845f6496bfdf1966ce1d40397a3434c234839`, preserved by an explicit
+  merge into `lane/runtime`;
+- the fetched public architecture head
+  `c4d509ee0a9f7da29e4a6499049f15929382c050` on `lane/docs` before this
+  policy and state addendum;
+- historical divergent ARM/source/CPU lineages preserved by tree-neutral
+  quarantine merges on `lane/tmp`, not represented as current source.
+
+`main` remains unchanged at `d2e1ff1c0b72eedc630cfdb02827f81f9df179ac`.
+It was not modified because the documentation line contains Draft architecture,
+the CPU lane still lacks the newer CUDA-optional CMake entry point, and RAM
+Assembly P0 still awaits physical validation. Main integration therefore
+requires a later ordered review rather than a recency-based merge.
+
+Validation results:
+
+- `lane/cpu`: serial CUDA 12.4 build for `61;70` passed; 29/29 CTests passed
+  with host device access. Its older CMake entry point ignored the requested
+  `PROMETHEUS_ENABLE_CUDA=OFF`, so a true CPU-only configure was not available
+  on this lane and remains an integration blocker.
+- `lane/gpu`: clean CPU-only serial build passed with 23/23 CTests; fresh CUDA
+  12.4 serial build for `61;70;75` passed with 33/33 CTests and host device
+  access.
+- `lane/runtime`: clean CPU-only serial build passed with 30/30 CTests; fresh
+  CUDA 12.4 serial build for `61;70;75` passed with 39/39 CTests and host
+  device access.
+- RAM Assembly P0 host validation passed shell syntax, privilege-model,
+  static-payload, test-runner, malformed/incompatible declaration,
+  provider/candidate-record, packaging, and initramfs inspection checks.
+- Changed-range `git diff --check`, tracked private-repository-identifier
+  scans, and tracked persistent-local-path scans passed.
+
+Known legacy CUDA shuffle/PTX and nvlink compatibility warnings remain
+non-fatal and unchanged. RAM Assembly P0 is host validated only. No physical
+Dell Wyse 5070 kernel build, tmpfs mount, `kexec -l`, `kexec -e`, control
+transfer, installation, activation, recovery, or runtime-readiness result was
+performed or claimed. P01 implementation and USB image construction have not
+begun.

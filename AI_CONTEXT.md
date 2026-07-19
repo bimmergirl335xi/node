@@ -468,3 +468,29 @@ explicitly requests a reconciliation or rewrite.
 Handoffs must preserve architecture decisions, completed work, validation,
 limitations, unfinished placeholders, exact commands, required files, and a
 clean next-step boundary.
+
+## 2026-07-19 Repository Reconciliation Boundary
+
+The permanent branch set is `main`, `lane/runtime`, `lane/docs`, `lane/cpu`,
+`lane/gpu`, `lane/apu`, `lane/phi`, `lane/codex`, and `lane/tmp`. The complete
+ownership, cross-domain, validation, non-force history, quarantine, and
+operator-owned deletion rules are in `docs/BRANCH_POLICY.md`.
+
+Current reconciled lane checkpoints are CPU-7.2.1A on `lane/cpu`, GPU-7.2A on
+`lane/gpu`, public BOOT/KRN/ASM Draft architecture on `lane/docs`, and RAM
+Assembly P0 plus its canonical dependency inventory on `lane/runtime`.
+Historical mixed ARM/source/CPU tips are retained only for reachability in
+`lane/tmp`; tree-neutral quarantine does not make their old trees canonical.
+
+`main` remains at the ACS-I001 integrated checkpoint. Do not integrate the
+current lanes into `main` until the exact ordered gate is reviewed: first
+reconcile the CPU lane with a validated CUDA-optional build entry point, then
+revalidate CPU and GPU lane compatibility, review Draft documentation for the
+selected checkpoint, and keep RAM Assembly P0 outside `main` until its
+physical thin-client boundary is separately accepted.
+
+RAM Assembly P0 remains host validated and physically pending. No Dell Wyse
+5070 kernel build, tmpfs mount, kexec load, kexec execution, physical control
+transfer, installation, activation, recovery, or runtime-readiness result was
+performed during repository reconciliation. P01 and USB-image implementation
+remain out of scope.
