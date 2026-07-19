@@ -1,8 +1,8 @@
 # Node — Tracked Project Tree
 
-This is a compact view of the tracked repository after ACS-R001. Generated build
-directories and ignored runtime artifacts are omitted. Directories not shown
-must not be inferred to exist.
+This is a compact view of the tracked repository after the 2026-07-19 branch
+policy reconciliation. Generated build directories and ignored runtime
+artifacts are omitted. Directories not shown must not be inferred to exist.
 
 ```text
 node/
@@ -36,6 +36,7 @@ node/
 ├── benchmarks/
 ├── docs/
 │   ├── CURRENT_STATE.md
+│   ├── BRANCH_POLICY.md
 │   ├── HANDOFF_AFTER_PHASE_5.md
 │   ├── PROJECT_TREE.md
 │   ├── architecture/
@@ -57,6 +58,8 @@ node/
 │   │   │   ├── ACS-0007-security-and-trust.md
 │   │   │   ├── ACS-0008-immune-integration.md
 │   │   │   └── ACS-0009-runtime-integration.md
+│   │   ├── boot/
+│   │   ├── kernel/
 │   │   ├── memory/
 │   │   │   ├── README.md
 │   │   │   ├── MEM-0000-charter.md

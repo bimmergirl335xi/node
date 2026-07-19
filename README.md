@@ -40,8 +40,14 @@ code, or replace the legacy robot loop.
 - `docs/architecture/immune/` contains IMM-0000 and IMM-0001 as public Draft
   immune architecture. No private detection logic or IMM implementation is
   present.
-- Public BOOT documents are not yet committed. Bootstrap implementation remains
-  reserved for `lane/bootstrap`.
+- `docs/architecture/boot/` contains the public Draft BOOT charter, state,
+  discovery, authority, and recovery-plan boundaries.
+- `docs/architecture/kernel/` contains the public Draft KRN family and ASM
+  assembly-environment boundaries. Open assembly implementation belongs to
+  `lane/runtime`; these documents grant no installation or activation result.
+
+The permanent branch model and its non-force integration gates are defined in
+`docs/BRANCH_POLICY.md`.
 
 ## Build and test
 
