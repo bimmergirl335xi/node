@@ -1,8 +1,8 @@
 # Node — Tracked Project Tree
 
-This is a compact view of the tracked repository after ACS-R001. Generated build
-directories and ignored runtime artifacts are omitted. Directories not shown
-must not be inferred to exist.
+This is a compact view of the tracked repository after GPU-7.1B. Generated
+build directories and ignored runtime artifacts are omitted. Directories not
+shown must not be inferred to exist.
 
 ```text
 node/
@@ -118,6 +118,8 @@ node/
 │   │   │   ├── CMakeLists.txt
 │   │   │   ├── cuda_backend.hpp
 │   │   │   ├── cuda_backend.cu
+│   │   │   ├── cuda_evidence_adapter.hpp
+│   │   │   ├── cuda_evidence_adapter.cpp
 │   │   │   ├── cuda_capabilities.hpp
 │   │   │   ├── cuda_capabilities.cu
 │   │   │   ├── cuda_device.hpp
@@ -181,6 +183,12 @@ node/
 │   │   ├── shutdown_manager.cpp
 │   │   ├── task_scheduler.hpp
 │   │   └── task_scheduler.cpp
+│   ├── hardware/
+│   │   ├── CMakeLists.txt
+│   │   ├── gpu_evidence_correlation.hpp
+│   │   ├── gpu_evidence_correlation.cpp
+│   │   ├── linux_pci_inventory.hpp
+│   │   └── linux_pci_inventory.cpp
 │   ├── kernels/
 │   ├── diagnostics/
 │   ├── experiments/
@@ -210,6 +218,7 @@ node/
         │   ├── test_arm_linux_auxv.cpp
         │   ├── test_arm_processor_identity.cpp
         │   ├── test_cuda_backend_registry.cu
+        │   ├── test_cuda_evidence_adapter.cpp
         │   ├── test_cuda_runtime_resources.cu
         │   ├── test_cuda_runtime_compilation.cpp
         │   └── test_hailo_backend.cpp
@@ -228,6 +237,10 @@ node/
         │   ├── test_architecture_shadow.cpp
         │   └── test_proposal_abi.cpp
         ├── kernels/
+        ├── hardware/
+        │   ├── CMakeLists.txt
+        │   ├── test_gpu_evidence_correlation.cpp
+        │   └── test_linux_pci_inventory.cpp
         └── protocol/
 ```
 

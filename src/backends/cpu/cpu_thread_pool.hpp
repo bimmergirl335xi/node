@@ -54,6 +54,17 @@ enum class CpuThreadPoolStopMode : std::uint8_t {
     cancel_pending,
 };
 
+enum class CpuThreadPoolShutdownResult : std::uint8_t {
+    request_accepted = 0,
+    already_requested,
+    escalated,
+    fully_stopped,
+    timed_out,
+    called_from_worker,
+    invalid_timeout,
+    failed_lifecycle,
+};
+
 struct CpuTaskResult {
     CpuTaskId task_id = 0;
     CpuTaskState state = CpuTaskState::invalid;
@@ -148,6 +159,21 @@ struct CpuThreadPoolSnapshot {
     std::uint64_t cancelled_task_count = 0;
 
     std::string message{};
+
+    [[nodiscard]] bool accepting_work() const noexcept {
+        return state == CpuThreadPoolState::running;
+    }
+
+    [[nodiscard]] bool quiescent() const noexcept {
+        return queued_task_count == 0 &&
+               active_task_count == 0;
+    }
+
+    [[nodiscard]] bool fully_stopped() const noexcept {
+        return state == CpuThreadPoolState::stopped &&
+               live_worker_count == 0 &&
+               quiescent();
+    }
 };
 
 // Phase 7.2.1 provides one bounded worker pool for one logical execution
@@ -170,6 +196,17 @@ public:
     [[nodiscard]] CpuTaskSubmissionResult submit(
         CpuTaskFunction task,
         CpuTaskPriority priority = CpuTaskPriority::normal);
+
+    // Stops new task acceptance and publishes the selected shutdown policy
+    // without waiting for running work or joining worker threads.
+    [[nodiscard]] CpuThreadPoolShutdownResult request_shutdown(
+        CpuThreadPoolStopMode mode);
+
+    // Observes and finalizes a requested shutdown within a finite interval.
+    // A zero timeout is an immediate observation. Negative timeouts are
+    // rejected. Worker tasks cannot wait for their own pool.
+    [[nodiscard]] CpuThreadPoolShutdownResult wait_for_shutdown(
+        std::chrono::nanoseconds timeout);
 
     // Stops accepting new work, completes queued/running work, joins workers,
     // and leaves the pool stopped.
@@ -196,6 +233,8 @@ private:
 [[nodiscard]] const char* to_string(CpuTaskSubmissionCode value) noexcept;
 [[nodiscard]] const char* to_string(CpuThreadPoolState value) noexcept;
 [[nodiscard]] const char* to_string(CpuThreadPoolStopMode value) noexcept;
+[[nodiscard]] const char* to_string(
+    CpuThreadPoolShutdownResult value) noexcept;
 
 }  // namespace prometheus::backends::cpu
 

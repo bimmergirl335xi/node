@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(prometheus_node VERSION 0.5.2 LANGUAGES CXX CUDA)
+project(prometheus_node VERSION 0.5.2 LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_EXTENSIONS OFF)
 
 set(
     PROMETHEUS_CUDA_ARCHITECTURES
@@ -16,50 +16,75 @@ set(
     CACHE STRING
     "CUDA architectures compiled into Prometheus binaries"
 )
-set(CMAKE_CUDA_ARCHITECTURES "${PROMETHEUS_CUDA_ARCHITECTURES}")
 
 option(PROMETHEUS_BUILD_TESTS "Build Prometheus tests" ON)
 option(PROMETHEUS_BUILD_BENCHMARKS "Build Prometheus benchmarks" ON)
 option(PROMETHEUS_BUILD_LEGACY_VISION "Build legacy/vision_swarm_11.cu" OFF)
 option(PROMETHEUS_CUDA_FAST_MATH "Enable CUDA --use_fast_math" OFF)
+option(PROMETHEUS_ENABLE_CUDA "Build CUDA-dependent Prometheus targets" ON)
 
-find_package(CUDAToolkit REQUIRED)
 find_package(Threads REQUIRED)
 
-foreach(PROMETHEUS_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0 AND PROMETHEUS_ARCH LESS 50)
-        message(
-            FATAL_ERROR
-            "CUDA ${CMAKE_CUDA_COMPILER_VERSION} cannot build sm_${PROMETHEUS_ARCH}. "
-            "Use CUDA 11.4 for the Kepler release."
+set(PROMETHEUS_CUDA_AVAILABLE OFF)
+if(PROMETHEUS_ENABLE_CUDA)
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 17)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+        set(CMAKE_CUDA_EXTENSIONS OFF)
+        set(CMAKE_CUDA_ARCHITECTURES "${PROMETHEUS_CUDA_ARCHITECTURES}")
+        find_package(CUDAToolkit REQUIRED)
+        set(PROMETHEUS_CUDA_AVAILABLE ON)
+    else()
+        message(WARNING
+            "CUDA compiler unavailable; CUDA-dependent targets are disabled"
         )
     endif()
+endif()
 
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND PROMETHEUS_ARCH LESS 75)
-        message(
-            FATAL_ERROR
-            "Use CUDA 12.x for Pascal/Volta or CUDA 11.4 for Kepler."
-        )
-    endif()
-endforeach()
+if(PROMETHEUS_CUDA_AVAILABLE)
+    foreach(PROMETHEUS_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0 AND PROMETHEUS_ARCH LESS 50)
+            message(
+                FATAL_ERROR
+                "CUDA ${CMAKE_CUDA_COMPILER_VERSION} cannot build sm_${PROMETHEUS_ARCH}. "
+                "Use CUDA 11.4 for the Kepler release."
+            )
+        endif()
 
-add_subdirectory(src/kernels)
+        if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND PROMETHEUS_ARCH LESS 75)
+            message(
+                FATAL_ERROR
+                "Use CUDA 12.x for Pascal/Volta or CUDA 11.4 for Kepler."
+            )
+        endif()
+    endforeach()
+endif()
+
+add_subdirectory(src/hardware)
+if(PROMETHEUS_CUDA_AVAILABLE)
+    add_subdirectory(src/kernels)
+endif()
 add_subdirectory(src/backends)
 add_subdirectory(src/core)
 
-function(prometheus_configure_cuda_target target)
-    target_link_libraries(
-        ${target}
-        PRIVATE
-            prometheus_cuda_kernels
-            CUDA::cudart
-    )
-    set_target_properties(
-        ${target}
-        PROPERTIES
-            CUDA_SEPARABLE_COMPILATION ON
-    )
-endfunction()
+if(PROMETHEUS_CUDA_AVAILABLE)
+    function(prometheus_configure_cuda_target target)
+        target_link_libraries(
+            ${target}
+            PRIVATE
+                prometheus_cuda_kernels
+                CUDA::cudart
+        )
+        set_target_properties(
+            ${target}
+            PROPERTIES
+                CUDA_SEPARABLE_COMPILATION ON
+        )
+    endfunction()
+endif()
 
 if(PROMETHEUS_BUILD_TESTS)
     enable_testing()
@@ -70,42 +95,47 @@ if(PROMETHEUS_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${target})
     endfunction()
 
-    prometheus_add_cuda_test(
-        test_kernel_foundation
-        tests/unit/kernels/test_kernel_foundation.cu
-        kernel_foundation
-    )
-    prometheus_add_cuda_test(
-        test_dense_kernels
-        tests/unit/kernels/test_dense_kernels.cu
-        dense_kernels
-    )
-    prometheus_add_cuda_test(
-        test_normalization_kernels
-        tests/unit/kernels/test_normalization_kernels.cu
-        normalization_kernels
-    )
-    prometheus_add_cuda_test(
-        test_temporal_kernels
-        tests/unit/kernels/test_temporal_kernels.cu
-        temporal_kernels
-    )
-    prometheus_add_cuda_test(
-        test_learning_kernels
-        tests/unit/kernels/test_learning_kernels.cu
-        learning_kernels
-    )
-    prometheus_add_cuda_test(
-        test_optimizer_kernels
-        tests/unit/kernels/test_optimizer_kernels.cu
-        optimizer_kernels
-    )
+    if(PROMETHEUS_CUDA_AVAILABLE)
+        prometheus_add_cuda_test(
+            test_kernel_foundation
+            tests/unit/kernels/test_kernel_foundation.cu
+            kernel_foundation
+        )
+        prometheus_add_cuda_test(
+            test_dense_kernels
+            tests/unit/kernels/test_dense_kernels.cu
+            dense_kernels
+        )
+        prometheus_add_cuda_test(
+            test_normalization_kernels
+            tests/unit/kernels/test_normalization_kernels.cu
+            normalization_kernels
+        )
+        prometheus_add_cuda_test(
+            test_temporal_kernels
+            tests/unit/kernels/test_temporal_kernels.cu
+            temporal_kernels
+        )
+        prometheus_add_cuda_test(
+            test_learning_kernels
+            tests/unit/kernels/test_learning_kernels.cu
+            learning_kernels
+        )
+        prometheus_add_cuda_test(
+            test_optimizer_kernels
+            tests/unit/kernels/test_optimizer_kernels.cu
+            optimizer_kernels
+        )
+    endif()
 
     add_subdirectory(tests/unit/backends)
     add_subdirectory(tests/unit/core)
+    add_subdirectory(tests/unit/hardware)
 endif()
 
-if(PROMETHEUS_BUILD_BENCHMARKS)
+add_subdirectory(assembly)
+
+if(PROMETHEUS_BUILD_BENCHMARKS AND PROMETHEUS_CUDA_AVAILABLE)
     function(prometheus_add_cuda_benchmark target source)
         add_executable(${target} ${source})
         prometheus_configure_cuda_target(${target})
@@ -134,6 +164,11 @@ if(PROMETHEUS_BUILD_BENCHMARKS)
 endif()
 
 if(PROMETHEUS_BUILD_LEGACY_VISION)
+    if(NOT PROMETHEUS_CUDA_AVAILABLE)
+        message(FATAL_ERROR
+            "PROMETHEUS_BUILD_LEGACY_VISION requires an available CUDA compiler"
+        )
+    endif()
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/legacy/vision_swarm_11.cu")
         message(
             FATAL_ERROR
@@ -161,7 +196,11 @@ if(PROMETHEUS_BUILD_LEGACY_VISION)
     )
 endif()
 
-message(STATUS "Prometheus CUDA compiler: ${CMAKE_CUDA_COMPILER_VERSION}")
-message(STATUS "Prometheus CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+if(PROMETHEUS_CUDA_AVAILABLE)
+    message(STATUS "Prometheus CUDA compiler: ${CMAKE_CUDA_COMPILER_VERSION}")
+    message(STATUS "Prometheus CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+else()
+    message(STATUS "Prometheus CUDA targets: disabled")
+endif()
 message(STATUS "Prometheus kernel tests: ${PROMETHEUS_BUILD_TESTS}")
 message(STATUS "Prometheus kernel benchmarks: ${PROMETHEUS_BUILD_BENCHMARKS}")

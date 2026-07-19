@@ -468,3 +468,158 @@ explicitly requests a reconciliation or rewrite.
 Handoffs must preserve architecture decisions, completed work, validation,
 limitations, unfinished placeholders, exact commands, required files, and a
 clean next-step boundary.
+
+## 2026-07-18 — CPU-7.2.1A Bounded CPU Thread-Pool Shutdown
+
+CPU-7.2.1A was reconstructed from the authoritative `lane/cpu` base commit
+`c026d0940a687a567d056a4dd65c79c705feae5b`. The previously expected source
+commit `cbf880100272ed2992236a466699a353f6d43e63` was retired as an input after
+repository, attachment, bundle, patch, reflog, and direct-origin recovery all
+confirmed that the object was unavailable.
+
+The single-group CPU pool now exposes non-blocking `request_shutdown(mode)` and
+bounded `wait_for_shutdown(timeout)` operations. Results distinguish an
+accepted request, an idempotent repeated request, drain-to-cancel escalation,
+full stop, timeout, worker-origin rejection, invalid timeout, and lifecycle
+failure. Requests stop acceptance immediately, preserve cooperative running
+tasks, wake workers, and never join. Drain retains queued work; cancel-pending
+cancels queued work exactly once. Policy is monotonic from drain to
+cancel-pending and cannot regress.
+
+Bounded waits use `std::chrono::steady_clock` condition-variable deadlines.
+Timeout leaves draining/stopping state, active/live counts, and thread handles
+truthful. Final joining occurs only after every spawned worker has exited and
+is serialized across concurrent waiters without holding the state mutex.
+Worker tasks may request shutdown but receive `called_from_worker` when they
+attempt to wait. Existing blocking `drain()` and `stop()` use the same request
+and finalization path and retain cooperative indefinite-wait behavior.
+
+Restart remains legal only after completed finalization. A new generation
+resets request, mode, and finalization state while task IDs and lifetime
+counters remain cumulative. Spawned workers are counted before their entry
+function begins, preventing an early zero-live observation, and worker-ID
+storage is reserved before launch to contain allocation failure.
+
+Changed files are `src/backends/cpu/cpu_thread_pool.hpp`,
+`src/backends/cpu/cpu_thread_pool.cpp`, and
+`tests/unit/backends/test_cpu_thread_pool.cpp`. Tests cover prompt requests,
+truthful timeout and later completion, drain, monotonic escalation, concurrent
+requesters and waiters, worker-origin request/wait, timeout-time restart
+rejection, restart after completion, two-worker exactly-once execution,
+four-worker synchronized producers with bounded backpressure and exact
+accounting, and the existing worker-origin destruction invariant. The existing
+ARMv7 scalar/NEON/SVE/SVE2 fail-closed regression remains unchanged and green.
+
+Validation used `build/cpu-7-2-1a-reconstructed`, CUDA architectures
+`61;70;75`, tests enabled, benchmarks and legacy vision disabled, strict native
+`-Wall -Wextra -Wpedantic -Werror`, and serial builds. Focused CPU CTest passed
+5/5, the thread-pool test passed 100/100 consecutive runs, the complete build
+passed, and complete CTest passed 29/29. Focused AddressSanitizer and
+UndefinedBehaviorSanitizer passed with leak detection disabled because
+LeakSanitizer is unavailable under the validation environment's ptrace setup;
+focused ThreadSanitizer passed. Existing CUDA shuffle/PTX deprecation warnings
+remain outside this checkpoint.
+
+A sandboxed complete-suite rerun could not access the NVIDIA device and failed
+only the eight CUDA-dependent tests. The same binaries passed 29/29 unchanged
+when rerun with host GPU access.
+
+Running tasks remain cooperative. A task that never returns can prevent full
+shutdown indefinitely; bounded waiting reports that condition without killing,
+detaching, or abandoning the worker. CPU-7.2.1A adds no affinity, NUMA routing,
+work stealing, execution-group collection, typed kernel, backend ownership,
+GPU, ACS, BOOT, robot, or neural-current behavior. The recommended next
+checkpoint is CPU-7.2.2 — Execution-Group Pool Collection.
+## 2026-07-18 — GPU-7.1A Driver-Independent Hardware Inventory
+
+GPU-7.1A adds a generic Linux PCI inventory below and outside the CUDA
+backend. `src/hardware/linux_pci_inventory.hpp` and
+`src/hardware/linux_pci_inventory.cpp` inspect only immediate entries beneath
+a configurable sysfs root, defaulting to `/sys/bus/pci/devices`. The component
+uses ordinary C++17 and POSIX file access; it does not include CUDA headers,
+link CUDA libraries, call a driver/runtime API, or invoke external commands.
+
+The value model preserves checked PCI addresses and raw numeric identity,
+classifies devices from PCI class codes, classifies known vendor families as a
+convenience, and reports bound, unbound, or unknown kernel-driver state.
+Hardware presence does not establish CUDA availability, health, compatibility,
+admission, or scheduling eligibility. All scans, retained devices, paths,
+identifiers, driver names, issues, and attribute reads have configurable and
+absolute bounds. Unavailable roots, malformed entries, partial observations,
+permission failures, I/O failures, and resource exhaustion remain explicit.
+
+Synthetic sysfs tests cover NVIDIA hardware without a driver, `nouveau`,
+`vfio-pci`, AMD and Intel devices, an NVIDIA non-GPU device, empty and missing
+roots, malformed data, bounded capacity, unknown vendors, failed driver-link
+resolution, optional identifiers, deterministic ordering, and invalid bounds.
+The ordinary-C++ no-CUDA build passed all 22 CTests under strict native
+warnings, and the inventory fixture passed 100 consecutive runs. Its standalone
+probe links no CUDA library and reports `CUDA_RUNTIME status=not_evaluated`.
+
+The validation host had CUDA 12.4 and two NVIDIA Quadro RTX 4000 devices. The
+generic probe observed them independently at `0000:2d:00.0` and
+`0000:2e:00.0`, both bound to the `nvidia` kernel driver. The CUDA-enabled
+serial build for architectures 61, 70, and 75 passed all 30 CTests with host
+GPU access. Existing CUDA capability and runtime-resource probes also passed.
+These CUDA results are separate corroborating evidence and are not fields or
+inferences in the generic inventory.
+
+This checkpoint adds no package installation, driver loading, runtime bridge,
+health monitoring, resource allocation, admission, scheduling, or executable
+GPU work. A recommended follow-up is a narrow GPU-7.1B evidence-correlation
+checkpoint that keeps physical hardware, driver binding, CUDA API presence,
+runtime enumeration, compatibility, and Node admission as distinct states.
+
+## 2026-07-18 — GPU-7.1B Bounded GPU Evidence Correlation
+
+GPU-7.1B is based exactly on GPU-7.1A commit
+`3561b12b3b2f292977253c77febe13e0c8d13167`. It adds an always-build pure
+correlation model in `src/hardware/gpu_evidence_correlation.*` and a
+CUDA-enabled mapping adapter in `src/backends/cuda/cuda_evidence_adapter.*`.
+The pure layer accepts already-observed metadata, includes no CUDA SDK header,
+links no CUDA library, performs no hardware query, and mutates no input or
+runtime state.
+
+Evidence remains independent for physical inventory, per-device kernel-driver
+binding, compile/runtime/driver software versions, CUDA enumeration, stable
+UUID, CUDA PCI identity, architecture and release compatibility, binary-image
+coverage, kernel-registry coverage, backend-registration readiness,
+runtime-binding usability, execution readiness, and Node admission. Admission
+is always `not_evaluated` in this checkpoint. Registration readiness does not
+imply kernel coverage, execution readiness, or admission.
+
+Full PCI identities match only when domain, bus, device, and function agree.
+When CUDA omits the domain, bus/device/function may produce an explicitly
+inferred match only if exactly one hardware candidate exists. Multiple
+candidates are ambiguous and are never resolved by order. Runtime devices with
+no usable PCI identity remain runtime-only. One physical function may retain
+multiple CUDA identities, provided each logical device remains independently
+addressable. Duplicate PCI identities, CUDA UUIDs or persistent keys, runtime
+ordinals, and unstable one-to-many associations are explicit conflicts.
+
+Ordering is deterministic: hardware records use numeric canonical PCI order;
+CUDA associations and runtime-only records use stable UUID, persistent key,
+PCI evidence, then runtime ordinal. Configurable and absolute bounds cover all
+input/retained records, associations, issues, stable identities, and retained
+diagnostic identity. Overlength stable identities are rejected without copying
+or truncating them into results.
+
+Strict no-CUDA validation passed 23/23 CTests. The A–T synthetic suite, which
+contains 36 input permutations per run, passed 100 consecutive runs. Dynamic
+dependency inspection found no CUDA library in the pure test or driverless
+probe. CUDA 12.4 validation for architectures 61, 70, and 75 passed 32/32
+CTests, including the host adapter test; existing capability and runtime-
+resource probes also passed.
+
+With normal visibility, the probe correlated `0000:2d:00.0` and
+`0000:2e:00.0` exactly to two stable CUDA UUIDs. With
+`CUDA_VISIBLE_DEVICES=` both PCI devices remained hardware-only while CUDA
+reported zero visible devices. With `CUDA_VISIBLE_DEVICES=0`, one stable UUID
+matched `0000:2d:00.0` exactly and `0000:2e:00.0` remained hardware-only.
+Runtime ordinals were not used as durable identity.
+
+GPU-7.1B adds no installation action, health policy, topology scheduling,
+memory allocation, kernel launch, MIG management, ACS admission, or private
+deployment policy. A recommended separately authorized follow-up is GPU-7.1C:
+bounded installer-facing driver/runtime library and package evidence that still
+does not install software or confuse presence with usability.

@@ -1,0 +1,2 @@
+# Deliberately malformed host-side parser fixture.
+invalid|relative/path|0|not_an_expected_result

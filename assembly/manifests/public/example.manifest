@@ -1,0 +1,14 @@
+# Public example declaration. Its presence never requests execution.
+manifest_version=1
+component_id=example.metrics
+declaration_revision_ref=component-revision:example-metrics:1
+abi_major=1
+abi_minor=0
+component_class=provider
+launch_kind=executable
+entry=/opt/node-components/example-metrics
+required_capability=runtime.events.v1
+provided_capability=metrics.snapshot.v1
+dependency=public.runtime.v1
+provenance_ref=build-record:example-metrics-1
+integrity_ref=sha256:0000000000000000000000000000000000000000000000000000000000000000

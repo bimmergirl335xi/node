@@ -1,0 +1,9 @@
+manifest_version=1
+component_id=example.unknown
+declaration_revision_ref=component-revision:example-unknown:1
+abi_major=1
+abi_minor=0
+component_class=authority-controller
+launch_kind=none
+provenance_ref=build-record:example-unknown-1
+integrity_ref=sha256:2222222222222222222222222222222222222222222222222222222222222222

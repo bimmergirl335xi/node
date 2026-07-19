@@ -1,0 +1,74 @@
+{
+  "contract_identity": "node.ram-assembly-p0.conformance-authority",
+  "contract_revision": 1,
+  "classification": "PUBLIC-CONFORMANCE",
+  "authority_state": "AUTHORITY_NOT_REQUIRED",
+  "operation_scope": "isolated_non_production_conformance",
+  "rationale": "P0 performs bounded disposable mechanism conformance without producing normal Node or production material.",
+  "permitted_kernel_source_inputs": [
+    "explicit_local_git_checkout_at_reviewed_revision",
+    "explicit_git_source_bundle_at_reviewed_revision",
+    "explicit_repository_url_at_reviewed_revision"
+  ],
+  "permitted_configuration_inputs": [
+    "running_kernel_configuration_evidence_or_x86_64_defconfig",
+    "tracked_public_p0_configuration_fragments",
+    "explicit_public_external_component_declaration"
+  ],
+  "permitted_test_inputs": [
+    "tracked_public_p0_test_manifest_and_static_payloads",
+    "at_most_16_explicit_prebuilt_static_test_payloads_with_bounded_manifest"
+  ],
+  "permitted_candidate_output_classes": [
+    "asm_candidate_kernel_image",
+    "asm_candidate_initramfs_image",
+    "p0_conformance_evidence"
+  ],
+  "resource_limits": {
+    "tmpfs_workspace_min_mib": 1024,
+    "tmpfs_workspace_max_mib": 65536,
+    "default_min_available_ram_mib": 3072,
+    "provider_invocation_timeout_seconds": 21600,
+    "provider_invocation_timeout_max_seconds": 86400,
+    "kernel_build_jobs": 1,
+    "candidate_output_limit": 2,
+    "test_entry_limit": 32,
+    "per_test_timeout_max_ms": 60000,
+    "extra_prebuilt_test_limit": 16,
+    "kernel_command_line_max_bytes": 2048,
+    "candidate_hold_max_seconds": 600,
+    "control_transfer_limit": 1
+  },
+  "retention": {
+    "mutable_storage": "tmpfs_only",
+    "persistent_candidate_retention": "prohibited",
+    "lifetime": "one_p0_conformance_operation"
+  },
+  "cleanup_and_disposal": [
+    "candidate_outputs_remain_ineligible_while_cleanup_is_pending",
+    "dispose_by_unmounting_the_dedicated_tmpfs_or_rebooting",
+    "do_not_copy_candidate_outputs_to_persistent_storage",
+    "failed_or_indeterminate_cleanup_requires_explicit_reporting"
+  ],
+  "prohibitions": [
+    "production_mutation",
+    "installation",
+    "generation_membership",
+    "activation",
+    "propagation",
+    "normal_node_execution",
+    "production_material_retention",
+    "replacement_of_an_authorized_build"
+  ],
+  "semantic_absences": [
+    "boot_recovery_plan",
+    "boot_semantic_operation",
+    "accepted_krn_artifact",
+    "boot_scoped_artifact_acceptance",
+    "assembly_generation",
+    "installed_instance",
+    "activation_result",
+    "recovery_result",
+    "runtime_readiness_result"
+  ]
+}

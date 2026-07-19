@@ -1,0 +1,42 @@
+add_library(
+    node_external_component_manifest
+    STATIC
+        providers/external_component_manifest.c
+)
+target_include_directories(
+    node_external_component_manifest
+    PUBLIC
+        "${PROJECT_SOURCE_DIR}/interfaces"
+        "${CMAKE_CURRENT_SOURCE_DIR}/providers"
+)
+target_compile_features(node_external_component_manifest PUBLIC c_std_11)
+target_compile_options(
+    node_external_component_manifest
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+)
+
+add_executable(
+    node_component_manifest_validator
+    providers/manifest_validator_main.c
+)
+target_link_libraries(
+    node_component_manifest_validator
+    PRIVATE
+        node_external_component_manifest
+)
+target_compile_options(
+    node_component_manifest_validator
+    PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+)
+
+if(PROMETHEUS_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
