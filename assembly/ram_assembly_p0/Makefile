@@ -29,14 +29,15 @@ host-test: host-build
 component-manifest-test: host-build
 	"$(HOST_ROOT)/bin/node_component_manifest_validator" \
 		> "$(HOST_BUILD_DIR)/component-manifest-absent.out"
-	grep -F '"state":"not_supplied"' \
+	grep -F '"declaration_state":"declaration_not_supplied"' \
 		"$(HOST_BUILD_DIR)/component-manifest-absent.out"
 	"$(HOST_ROOT)/bin/node_component_manifest_validator" \
 		--manifest "$(P0_DIR)/../manifests/public/example.manifest" \
 		> "$(HOST_BUILD_DIR)/component-manifest-valid.out"
-	grep -F '"state":"validated_candidate"' \
+	grep -F '"declaration_state":"declaration_structurally_valid"' \
 		"$(HOST_BUILD_DIR)/component-manifest-valid.out"
-	grep -F '"activated":false' "$(HOST_BUILD_DIR)/component-manifest-valid.out"
+	grep -F '"declaration_revision_ref":"component-revision:example-metrics:1"' \
+		"$(HOST_BUILD_DIR)/component-manifest-valid.out"
 	@if "$(HOST_ROOT)/bin/node_component_manifest_validator" \
 		--manifest "$(P0_DIR)/../tests/fixtures/malformed.manifest" \
 		> "$(HOST_BUILD_DIR)/component-manifest-malformed.out" 2>&1; then \

@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     const char *environment_path = getenv("NODE_EXTERNAL_COMPONENT_MANIFEST");
     const char *selected_path;
     struct node_component_declaration_v1 declaration;
-    struct node_component_lifecycle_result_v1 result;
+    struct node_component_declaration_result_v1 result;
     int index;
     int status;
 
@@ -51,13 +51,13 @@ int main(int argc, char **argv)
     }
     selected_path = argument_path != NULL ? argument_path : environment_path;
     if (selected_path == NULL) {
-        puts("{\"record\":\"external_component_manifest\",\"state\":\"not_supplied\",\"activation\":\"not_requested\"}");
+        puts("{\"record\":\"external_component_declaration\",\"declaration_state\":\"declaration_not_supplied\",\"failure\":\"none\"}");
         return 0;
     }
 
     status = node_external_component_manifest_load_v1(selected_path, &declaration, &result);
-    printf("{\"record\":\"external_component_manifest\",\"state\":");
-    json_text(status == 0 ? "validated_candidate" : "rejected");
+    printf("{\"record\":\"external_component_declaration\",\"declaration_state\":");
+    json_text(node_external_component_declaration_state_name_v1(result.declaration_state));
     printf(",\"failure\":");
     json_text(node_external_component_failure_name_v1(result.failure));
     printf(",\"detail\":");
@@ -65,11 +65,13 @@ int main(int argc, char **argv)
     if (status == 0) {
         printf(",\"component_id\":");
         json_text(declaration.component_id.bytes);
+        printf(",\"declaration_revision_ref\":");
+        json_text(declaration.declaration_revision_ref.bytes);
         printf(",\"component_class\":");
         json_text(node_external_component_class_name_v1(declaration.component_class));
         printf(",\"launch_kind\":");
         json_text(node_external_component_launch_name_v1(declaration.launch_kind));
     }
-    puts(",\"accepted\":false,\"generation_member\":false,\"authority\":false,\"activated\":false,\"ready\":false}");
+    puts("}");
     return status == 0 ? 0 : 1;
 }

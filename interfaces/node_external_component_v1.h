@@ -31,23 +31,14 @@ enum node_component_launch_kind_v1 {
     NODE_COMPONENT_LAUNCH_ENTRYPOINT_V1 = 2
 };
 
-enum node_component_lifecycle_v1 {
-    NODE_COMPONENT_LIFECYCLE_NOT_EVALUATED_V1 = 0,
-    NODE_COMPONENT_LIFECYCLE_DECLARED_V1 = 1,
-    NODE_COMPONENT_LIFECYCLE_VALIDATED_V1 = 2,
-    NODE_COMPONENT_LIFECYCLE_START_REQUESTED_V1 = 3,
-    NODE_COMPONENT_LIFECYCLE_STARTED_V1 = 4,
-    NODE_COMPONENT_LIFECYCLE_STOPPED_V1 = 5,
-    NODE_COMPONENT_LIFECYCLE_FAILED_V1 = 6
-};
-
-enum node_component_outcome_v1 {
-    NODE_COMPONENT_OUTCOME_NOT_EVALUATED_V1 = 0,
-    NODE_COMPONENT_OUTCOME_SUCCEEDED_V1 = 1,
-    NODE_COMPONENT_OUTCOME_FAILED_V1 = 2,
-    NODE_COMPONENT_OUTCOME_UNAVAILABLE_V1 = 3,
-    NODE_COMPONENT_OUTCOME_UNSUPPORTED_V1 = 4,
-    NODE_COMPONENT_OUTCOME_INDETERMINATE_V1 = 5
+enum node_component_declaration_state_v1 {
+    NODE_COMPONENT_DECLARATION_NOT_EVALUATED_V1 = 0,
+    NODE_COMPONENT_DECLARATION_NOT_SUPPLIED_V1 = 1,
+    NODE_COMPONENT_DECLARATION_STRUCTURALLY_VALID_V1 = 2,
+    NODE_COMPONENT_DECLARATION_MALFORMED_V1 = 3,
+    NODE_COMPONENT_DECLARATION_ABI_INCOMPATIBLE_V1 = 4,
+    NODE_COMPONENT_DECLARATION_UNSUPPORTED_V1 = 5,
+    NODE_COMPONENT_DECLARATION_INDETERMINATE_V1 = 6
 };
 
 enum node_component_failure_v1 {
@@ -87,6 +78,7 @@ struct node_component_declaration_v1 {
     uint32_t component_class;
     uint32_t launch_kind;
     struct node_component_id_v1 component_id;
+    struct node_component_ref_v1 declaration_revision_ref;
     struct node_component_entry_v1 entry;
     uint32_t required_capability_count;
     struct node_component_ref_v1
@@ -101,12 +93,12 @@ struct node_component_declaration_v1 {
     struct node_component_ref_v1 integrity_ref;
 };
 
-struct node_component_lifecycle_result_v1 {
+struct node_component_declaration_result_v1 {
     uint32_t struct_size;
-    uint32_t lifecycle;
-    uint32_t outcome;
+    uint32_t declaration_state;
     uint32_t failure;
     struct node_component_id_v1 component_id;
+    struct node_component_ref_v1 declaration_revision_ref;
     uint16_t detail_length;
     uint16_t reserved;
     char detail[NODE_COMPONENT_DETAIL_CAPACITY_V1];

@@ -1,5 +1,6 @@
 manifest_version=1
 component_id=example.unknown
+declaration_revision_ref=component-revision:example-unknown:1
 abi_major=1
 abi_minor=0
 component_class=authority-controller

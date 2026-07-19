@@ -12,6 +12,7 @@
 struct manifest_presence {
     unsigned int manifest_version;
     unsigned int component_id;
+    unsigned int declaration_revision_ref;
     unsigned int abi_major;
     unsigned int abi_minor;
     unsigned int component_class;
@@ -22,9 +23,8 @@ struct manifest_presence {
 };
 
 static void result_set(
-    struct node_component_lifecycle_result_v1 *result,
-    uint32_t lifecycle,
-    uint32_t outcome,
+    struct node_component_declaration_result_v1 *result,
+    uint32_t declaration_state,
     uint32_t failure,
     const char *detail)
 {
@@ -32,8 +32,7 @@ static void result_set(
 
     memset(result, 0, sizeof(*result));
     result->struct_size = (uint32_t)sizeof(*result);
-    result->lifecycle = lifecycle;
-    result->outcome = outcome;
+    result->declaration_state = declaration_state;
     result->failure = failure;
     if (detail != NULL) {
         length = strlen(detail);
@@ -47,22 +46,24 @@ static void result_set(
 }
 
 static int fail(
-    struct node_component_lifecycle_result_v1 *result,
+    struct node_component_declaration_result_v1 *result,
     uint32_t failure,
     const char *detail)
 {
-    uint32_t outcome = NODE_COMPONENT_OUTCOME_FAILED_V1;
+    uint32_t declaration_state = NODE_COMPONENT_DECLARATION_MALFORMED_V1;
     if (failure == NODE_COMPONENT_FAILURE_IO_UNAVAILABLE_V1) {
-        outcome = NODE_COMPONENT_OUTCOME_UNAVAILABLE_V1;
-    } else if (failure == NODE_COMPONENT_FAILURE_INCOMPATIBLE_ABI_V1 ||
-               failure == NODE_COMPONENT_FAILURE_UNSUPPORTED_CLASS_V1 ||
+        declaration_state = NODE_COMPONENT_DECLARATION_INDETERMINATE_V1;
+    } else if (failure == NODE_COMPONENT_FAILURE_INCOMPATIBLE_ABI_V1) {
+        declaration_state = NODE_COMPONENT_DECLARATION_ABI_INCOMPATIBLE_V1;
+    } else if (failure == NODE_COMPONENT_FAILURE_UNSUPPORTED_CLASS_V1 ||
                failure == NODE_COMPONENT_FAILURE_UNSUPPORTED_LAUNCH_V1) {
-        outcome = NODE_COMPONENT_OUTCOME_UNSUPPORTED_V1;
+        declaration_state = NODE_COMPONENT_DECLARATION_UNSUPPORTED_V1;
+    } else if (failure == NODE_COMPONENT_FAILURE_INVALID_ARGUMENT_V1) {
+        declaration_state = NODE_COMPONENT_DECLARATION_INDETERMINATE_V1;
     }
     result_set(
         result,
-        NODE_COMPONENT_LIFECYCLE_FAILED_V1,
-        outcome,
+        declaration_state,
         failure,
         detail);
     return -1;
@@ -185,7 +186,7 @@ static int parse_line(
     char *line,
     struct node_component_declaration_v1 *declaration,
     struct manifest_presence *presence,
-    struct node_component_lifecycle_result_v1 *result)
+    struct node_component_declaration_result_v1 *result)
 {
     char *separator;
     char *key;
@@ -222,6 +223,16 @@ static int parse_line(
             &declaration->component_id.length,
             value,
             1);
+    } else if (strcmp(key, "declaration_revision_ref") == 0) {
+        if (set_unique(&presence->declaration_revision_ref) != 0) {
+            return fail(result, NODE_COMPONENT_FAILURE_MALFORMED_V1, "duplicate declaration_revision_ref");
+        }
+        status = copy_text(
+            declaration->declaration_revision_ref.bytes,
+            sizeof(declaration->declaration_revision_ref.bytes),
+            &declaration->declaration_revision_ref.length,
+            value,
+            0);
     } else if (strcmp(key, "abi_major") == 0) {
         if (set_unique(&presence->abi_major) != 0 || parse_u16(value, &number) != 0) {
             return fail(result, NODE_COMPONENT_FAILURE_MALFORMED_V1, "invalid abi_major");
@@ -314,9 +325,10 @@ static int parse_line(
 static int validate_complete(
     const struct manifest_presence *presence,
     struct node_component_declaration_v1 *declaration,
-    struct node_component_lifecycle_result_v1 *result)
+    struct node_component_declaration_result_v1 *result)
 {
     if (presence->manifest_version == 0U || presence->component_id == 0U ||
+        presence->declaration_revision_ref == 0U ||
         presence->abi_major == 0U || presence->abi_minor == 0U ||
         presence->component_class == 0U || presence->launch_kind == 0U ||
         presence->provenance_ref == 0U || presence->integrity_ref == 0U) {
@@ -336,18 +348,18 @@ static int validate_complete(
 
     result_set(
         result,
-        NODE_COMPONENT_LIFECYCLE_VALIDATED_V1,
-        NODE_COMPONENT_OUTCOME_SUCCEEDED_V1,
+        NODE_COMPONENT_DECLARATION_STRUCTURALLY_VALID_V1,
         NODE_COMPONENT_FAILURE_NONE_V1,
         "declaration structurally valid; no acceptance or launch performed");
     result->component_id = declaration->component_id;
+    result->declaration_revision_ref = declaration->declaration_revision_ref;
     return 0;
 }
 
 int node_external_component_manifest_load_v1(
     const char *path,
     struct node_component_declaration_v1 *declaration,
-    struct node_component_lifecycle_result_v1 *result)
+    struct node_component_declaration_result_v1 *result)
 {
     FILE *stream;
     char line[NODE_MANIFEST_LINE_CAPACITY];
@@ -366,8 +378,7 @@ int node_external_component_manifest_load_v1(
     declaration->struct_size = (uint32_t)sizeof(*declaration);
     result_set(
         result,
-        NODE_COMPONENT_LIFECYCLE_DECLARED_V1,
-        NODE_COMPONENT_OUTCOME_NOT_EVALUATED_V1,
+        NODE_COMPONENT_DECLARATION_NOT_EVALUATED_V1,
         NODE_COMPONENT_FAILURE_NONE_V1,
         "manifest supplied");
 
@@ -419,6 +430,20 @@ const char *node_external_component_failure_name_v1(uint32_t failure)
         case NODE_COMPONENT_FAILURE_UNSUPPORTED_CLASS_V1: return "unsupported_class";
         case NODE_COMPONENT_FAILURE_UNSUPPORTED_LAUNCH_V1: return "unsupported_launch";
         default: return "unknown";
+    }
+}
+
+const char *node_external_component_declaration_state_name_v1(uint32_t state)
+{
+    switch (state) {
+        case NODE_COMPONENT_DECLARATION_NOT_EVALUATED_V1: return "declaration_not_evaluated";
+        case NODE_COMPONENT_DECLARATION_NOT_SUPPLIED_V1: return "declaration_not_supplied";
+        case NODE_COMPONENT_DECLARATION_STRUCTURALLY_VALID_V1: return "declaration_structurally_valid";
+        case NODE_COMPONENT_DECLARATION_MALFORMED_V1: return "declaration_malformed";
+        case NODE_COMPONENT_DECLARATION_ABI_INCOMPATIBLE_V1: return "declaration_abi_incompatible";
+        case NODE_COMPONENT_DECLARATION_UNSUPPORTED_V1: return "declaration_unsupported";
+        case NODE_COMPONENT_DECLARATION_INDETERMINATE_V1: return "declaration_indeterminate";
+        default: return "declaration_state_unknown";
     }
 }
 

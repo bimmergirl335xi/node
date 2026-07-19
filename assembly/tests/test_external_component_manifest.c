@@ -5,10 +5,13 @@
 
 #define FIXTURE(name) NODE_COMPONENT_FIXTURE_DIR "/" name
 
-static int expect_failure(const char *path, uint32_t expected_failure)
+static int expect_failure(
+    const char *path,
+    uint32_t expected_failure,
+    uint32_t expected_state)
 {
     struct node_component_declaration_v1 declaration;
-    struct node_component_lifecycle_result_v1 result;
+    struct node_component_declaration_result_v1 result;
 
     if (node_external_component_manifest_load_v1(path, &declaration, &result) == 0) {
         fprintf(stderr, "manifest unexpectedly accepted: %s\n", path);
@@ -23,13 +26,22 @@ static int expect_failure(const char *path, uint32_t expected_failure)
             (unsigned int)result.failure);
         return 1;
     }
+    if (result.declaration_state != expected_state) {
+        fprintf(
+            stderr,
+            "declaration state mismatch: %s expected=%u actual=%u\n",
+            path,
+            (unsigned int)expected_state,
+            (unsigned int)result.declaration_state);
+        return 1;
+    }
     return 0;
 }
 
 int main(void)
 {
     struct node_component_declaration_v1 declaration;
-    struct node_component_lifecycle_result_v1 result;
+    struct node_component_declaration_result_v1 result;
 
     if (node_external_component_manifest_load_v1(
             NODE_COMPONENT_FIXTURE_DIR "/valid.manifest",
@@ -47,28 +59,36 @@ int main(void)
         declaration.required_capability_count != 2U ||
         declaration.provided_capability_count != 1U ||
         declaration.dependency_count != 1U ||
-        result.lifecycle != NODE_COMPONENT_LIFECYCLE_VALIDATED_V1 ||
-        result.outcome != NODE_COMPONENT_OUTCOME_SUCCEEDED_V1 ||
+        result.declaration_state != NODE_COMPONENT_DECLARATION_STRUCTURALLY_VALID_V1 ||
         result.failure != NODE_COMPONENT_FAILURE_NONE_V1 ||
-        strcmp(declaration.component_id.bytes, "example.metrics") != 0) {
+        strcmp(declaration.component_id.bytes, "example.metrics") != 0 ||
+        strcmp(declaration.declaration_revision_ref.bytes,
+               "component-revision:example-metrics:1") != 0 ||
+        strcmp(result.declaration_revision_ref.bytes,
+               declaration.declaration_revision_ref.bytes) != 0) {
         fputs("valid manifest did not populate the bounded ABI contract\n", stderr);
         return 1;
     }
     if (expect_failure(
             FIXTURE("malformed.manifest"),
-            NODE_COMPONENT_FAILURE_MALFORMED_V1) != 0 ||
+            NODE_COMPONENT_FAILURE_MALFORMED_V1,
+            NODE_COMPONENT_DECLARATION_MALFORMED_V1) != 0 ||
         expect_failure(
             FIXTURE("incompatible.manifest"),
-            NODE_COMPONENT_FAILURE_INCOMPATIBLE_ABI_V1) != 0 ||
+            NODE_COMPONENT_FAILURE_INCOMPATIBLE_ABI_V1,
+            NODE_COMPONENT_DECLARATION_ABI_INCOMPATIBLE_V1) != 0 ||
         expect_failure(
             FIXTURE("missing-required.manifest"),
-            NODE_COMPONENT_FAILURE_MISSING_REQUIRED_V1) != 0 ||
+            NODE_COMPONENT_FAILURE_MISSING_REQUIRED_V1,
+            NODE_COMPONENT_DECLARATION_MALFORMED_V1) != 0 ||
         expect_failure(
             FIXTURE("unsupported-class.manifest"),
-            NODE_COMPONENT_FAILURE_UNSUPPORTED_CLASS_V1) != 0 ||
+            NODE_COMPONENT_FAILURE_UNSUPPORTED_CLASS_V1,
+            NODE_COMPONENT_DECLARATION_UNSUPPORTED_V1) != 0 ||
         expect_failure(
             FIXTURE("too-many-capabilities.manifest"),
-            NODE_COMPONENT_FAILURE_LIMIT_EXCEEDED_V1) != 0) {
+            NODE_COMPONENT_FAILURE_LIMIT_EXCEEDED_V1,
+            NODE_COMPONENT_DECLARATION_MALFORMED_V1) != 0) {
         return 1;
     }
 
