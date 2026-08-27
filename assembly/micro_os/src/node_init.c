@@ -190,19 +190,22 @@ static int parse_command_line(const char *input,
     token = strtok_r(copy, " \t", &save);
     while (token != NULL) {
         const char *value;
-        if (strncmp(token, "node.micro_os.", 14) != 0) {
+        if (strncmp(token, "node.micro_os.",
+                    sizeof("node.micro_os.") - 1U) != 0) {
             token = strtok_r(NULL, " \t", &save);
             continue;
         }
-        if (strncmp(token, "node.micro_os.hold_seconds=", 27) == 0) {
-            value = token + 27;
+        if (strncmp(token, "node.micro_os.hold_seconds=",
+                    sizeof("node.micro_os.hold_seconds=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.hold_seconds=") - 1U;
             if (!parse_u32_bounded(value, 0U, NODE_P01_HOLD_MAX_SECONDS,
                                    &options->hold_seconds)) {
                 (void)snprintf(detail, detail_capacity, "invalid hold_seconds");
                 return 0;
             }
-        } else if (strncmp(token, "node.micro_os.terminal_action=", 30) == 0) {
-            value = token + 30;
+        } else if (strncmp(token, "node.micro_os.terminal_action=",
+                           sizeof("node.micro_os.terminal_action=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.terminal_action=") - 1U;
             if (strcmp(value, "poweroff") == 0) options->action = TERMINAL_POWER_OFF;
             else if (strcmp(value, "halt") == 0) options->action = TERMINAL_HALT;
             else if (strcmp(value, "reboot") == 0) options->action = TERMINAL_REBOOT;
@@ -211,21 +214,24 @@ static int parse_command_line(const char *input,
                 (void)snprintf(detail, detail_capacity, "invalid terminal_action");
                 return 0;
             }
-        } else if (strncmp(token, "node.micro_os.log_verbosity=", 29) == 0) {
-            value = token + 29;
+        } else if (strncmp(token, "node.micro_os.log_verbosity=",
+                           sizeof("node.micro_os.log_verbosity=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.log_verbosity=") - 1U;
             if (!parse_u32_bounded(value, 0U, 3U, &options->log_verbosity)) {
                 (void)snprintf(detail, detail_capacity, "invalid log_verbosity");
                 return 0;
             }
-        } else if (strncmp(token, "node.micro_os.manifest=", 23) == 0) {
-            value = token + 23;
+        } else if (strncmp(token, "node.micro_os.manifest=",
+                           sizeof("node.micro_os.manifest=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.manifest=") - 1U;
             if (strcmp(value, NODE_P01_MANIFEST_PATH) != 0) {
                 (void)snprintf(detail, detail_capacity,
                                "only the tracked P01 manifest is permitted");
                 return 0;
             }
-        } else if (strncmp(token, "node.micro_os.expected_boot_identity=", 37) == 0) {
-            value = token + 37;
+        } else if (strncmp(token, "node.micro_os.expected_boot_identity=",
+                           sizeof("node.micro_os.expected_boot_identity=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.expected_boot_identity=") - 1U;
             if (strcmp(value, NODE_P01_BOOT_IDENTITY) != 0) {
                 (void)snprintf(detail, detail_capacity,
                                "unexpected boot identity");
@@ -292,8 +298,6 @@ static int establish_filesystems(void) {
                          "mode=0700,size=8m")) {
         return 0;
     }
-    emit_json("filesystem_setup", "volatile_filesystems",
-              "established", "devtmpfs, procfs, sysfs, and bounded tmpfs");
     return 1;
 }
 
@@ -882,6 +886,8 @@ int main(int argument_count, char **arguments) {
         if (!establish_filesystems() || !establish_console()) {
             emergency_halt();
         }
+        emit_json("filesystem_setup", "volatile_filesystems",
+                  "established", "devtmpfs, procfs, sysfs, and bounded tmpfs");
     }
     emit_json("micro_os_boot_attempt", NODE_P01_BOOT_IDENTITY, "entered",
               "permanent C PID 1 entered");

@@ -31,6 +31,14 @@ grep -F '"subject":"pid1_children","outcome":"zombie_free"' \
     "${output_dir}/public.out"
 grep -F '"outcome":"p01_terminal_state_reached"' "${output_dir}/public.out"
 
+"${init}" --host-root "${root}" --manifest "${public_manifest}" \
+    --cmdline 'node.micro_os.hold_seconds=0 node.micro_os.terminal_action=poweroff node.micro_os.log_verbosity=1 node.micro_os.manifest=/etc/node-p01/p01-public-startup-v1.manifest node.micro_os.expected_boot_identity=node-p01-micro-os-v1' \
+    > "${output_dir}/valid-full-cmdline.out" 2>&1
+grep -F '"outcome":"accepted_for_p01_structural_scope"' \
+    "${output_dir}/valid-full-cmdline.out"
+grep -F '"outcome":"p01_terminal_state_reached"' \
+    "${output_dir}/valid-full-cmdline.out"
+
 if "${init}" --host-root "${root}" --manifest "${required_failure_manifest}" \
     > "${output_dir}/required-failure.out" 2>&1; then
     echo "required service failure unexpectedly returned zero" >&2

@@ -26,10 +26,7 @@ timeout --signal=TERM --kill-after=5s 60s qemu-system-x86_64 \
 qemu_status=$?
 set -e
 [[ ${qemu_status} -eq 0 ]] || p01_fail "BIOS ISO QEMU returned ${qemu_status}"
-grep -Fq '"record":"micro_os_boot_attempt"' "${serial_log}" ||
-    p01_fail 'BIOS ISO did not enter permanent PID 1'
-grep -Fq '"outcome":"p01_terminal_state_reached"' "${serial_log}" ||
-    p01_fail 'BIOS ISO did not reach the P01 terminal state'
+p01_validate_boot_log "${serial_log}" 'QEMU BIOS ISO boot'
 printf '%s\n' \
     '{"test":"p01_qemu_bios_iso","status":"passed","acceleration":"tcg","firmware":"seabios"}' \
     > "${result}"

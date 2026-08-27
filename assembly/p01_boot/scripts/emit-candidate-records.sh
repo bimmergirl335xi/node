@@ -9,7 +9,11 @@ record_dir="${output_dir}/records"
 root="${output_dir}/initramfs-root"
 mkdir -p -- "${record_dir}"
 
-compiler_identity="gcc:$(gcc -dumpfullversion -dumpversion)+ld:$(ld -dumpversion)+make:$(make --version | awk 'NR == 1 {print $NF}')"
+p01_require_command gcc
+p01_require_command ld
+p01_require_command make
+p01_require_command sha256sum
+compiler_identity="gcc:$(gcc -dumpfullversion -dumpversion)+ld:$(ld --version | awk 'NR == 1 {print $NF}')+make:$(make --version | awk 'NR == 1 {print $NF}')"
 p01_safe_token "${compiler_identity}"
 node_revision=$(git -C "${NODE_REPOSITORY}" rev-parse HEAD)
 p01_safe_token "${node_revision}"

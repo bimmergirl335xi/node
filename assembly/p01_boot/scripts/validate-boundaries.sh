@@ -5,7 +5,7 @@ source "$(dirname -- "$0")/lib-p01.sh"
 [[ $# -eq 1 ]] || p01_fail 'usage: validate-boundaries.sh OUTPUT_DIR'
 output_dir=$(p01_assert_output_directory "$1")
 
-private_pattern='/home/|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|pass''word=|to''ken='
+private_pattern='/ho''me/|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|pass''word=|to''ken='
 if grep -R -n -E "${private_pattern}" \
     "${P01_DIR}" "${output_dir}/records"; then
     p01_fail 'private identifier or persistent local path found'

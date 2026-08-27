@@ -36,7 +36,8 @@ grep -Fq 'node.micro_os.manifest=/etc/node-p01/p01-public-startup-v1.manifest' \
 
 if [[ -f ${artifact_dir}/node-p01-x86_64.iso ]]; then
     p01_require_command xorriso
-    xorriso -indev "${artifact_dir}/node-p01-x86_64.iso" -find / -type f -print \
+    xorriso -indev "${artifact_dir}/node-p01-x86_64.iso" \
+        -find / -type f -exec echo \
         > "${validation}/iso.list" 2>&1
     grep -Fq '/boot/grub/grub.cfg' "${validation}/iso.list"
     grep -Fq '/boot/node-p01-bzImage' "${validation}/iso.list"

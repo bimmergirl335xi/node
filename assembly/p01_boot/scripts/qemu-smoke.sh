@@ -30,19 +30,7 @@ timeout --signal=TERM --kill-after=5s 45s qemu-system-x86_64 \
 qemu_status=$?
 set -e
 
-grep -Fq 'Linux version' "${serial_log}" || p01_fail 'QEMU did not prove kernel entry'
-grep -Fq '"record":"micro_os_boot_attempt"' "${serial_log}" ||
-    p01_fail 'QEMU did not prove permanent PID 1 entry'
-grep -Fq '"outcome":"accepted_for_p01_structural_scope"' "${serial_log}" ||
-    p01_fail 'QEMU did not prove manifest acceptance'
-grep -Fq '"subject":"same_stage_services","outcome":"overlap_observed"' \
-    "${serial_log}" || p01_fail 'QEMU did not prove concurrent overlap'
-grep -Fq '"subject":"required_semantic_success","outcome":"semantic_success"' \
-    "${serial_log}" || p01_fail 'QEMU did not prove required service semantics'
-grep -Fq '"subject":"optional_intentional_failure","outcome":"semantic_failure"' \
-    "${serial_log}" || p01_fail 'QEMU did not report optional failure'
-grep -Fq '"outcome":"p01_terminal_state_reached"' "${serial_log}" ||
-    p01_fail 'QEMU did not reach bounded P01 terminal state'
+p01_validate_boot_log "${serial_log}" 'QEMU direct BIOS boot'
 if [[ ${qemu_status} -ne 0 ]]; then
     p01_fail "QEMU returned status ${qemu_status} after evidence capture"
 fi

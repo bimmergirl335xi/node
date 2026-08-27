@@ -43,7 +43,16 @@ candidate records, direct TCG smoke evidence, and optional OVMF evidence.
 The direct QEMU proof uses the kernel/initramfs pair and therefore proves BIOS
 firmware-independent kernel entry rather than GRUB BIOS boot. BIOS bootloader
 support requires ISO inspection and a QEMU ISO boot; UEFI support additionally
-requires OVMF. Those distinctions remain explicit in validation records.
+requires OVMF. The UEFI proof copies the matching OVMF variable template into
+the named validation directory and gives only that disposable copy to QEMU as
+writable state. Host firmware variables are never opened or modified.
+
+All three QEMU paths require the same serial evidence: kernel and permanent
+PID 1 entry, volatile filesystem setup, structural manifest acceptance,
+same-stage overlap, required success, optional bounded failure, timeout
+handling, zombie-free child reaping, the final P01 result, and a bounded
+terminal action. Those distinctions and milestones remain explicit in the
+validation records and logs.
 
 ## Output and authority boundary
 
