@@ -43,3 +43,16 @@ x86_64 host and x86_64 Linux kernel source
 at least 3072 MiB available RAM by default
 dedicated tmpfs between 1024 and 65536 MiB
 serial kernel build (--jobs=1)
+
+# P01 kernel and initramfs boundary
+exact clean bimmergirl335xi/Linux-kernel-node-runtime Git checkout
+reviewed immutable kernel revision
+out-of-tree x86_64 bzImage build
+serial kernel build (-j1)
+static C11 libc support for permanent PID 1 and public probes
+
+# P01 hybrid ISO candidate
+grub-mkrescue plus GRUB BIOS/UEFI modules for claimed firmware modes
+xorriso for construction and content inspection
+qemu-system-x86_64 with TCG (optional smoke validation)
+OVMF (optional UEFI smoke validation)

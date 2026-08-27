@@ -51,9 +51,24 @@ mount
 sudo
 kexec
 
-# Planned P01 USB-image candidates; not current requirements
-loop-device tooling
-partition-table tooling
-FAT and Linux filesystem construction tools
-UEFI/BIOS bootloader image tooling
-offline image inspection and checksum tools
+# P01 candidate image construction and inspection
+grub-mkrescue
+xorriso
+cpio
+gzip
+file
+readelf
+sha256sum
+timeout
+
+# Optional P01 BIOS and UEFI image support
+GRUB i386-pc modules (BIOS)
+GRUB x86_64-efi modules (UEFI)
+
+# Optional P01 emulation validation
+qemu-system-x86_64 with TCG
+OVMF x86_64 firmware (UEFI only)
+
+# Operator-only physical-media tooling; never invoked by P01
+stable device-identity inspection utility
+ordinary image writer

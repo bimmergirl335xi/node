@@ -1,0 +1,43 @@
+{
+  "contract_identity": "node-p01-conformance-authority",
+  "contract_revision": 1,
+  "classification": "public-conformance",
+  "authority_boundary": "authority_not_required_disposable_candidate_mechanism_proof",
+  "permitted_kernel_input": "exact_bimmergirl335xi_linux_kernel_node_runtime_revision",
+  "permitted_micro_os_input": "tracked_public_p01_static_c11_sources",
+  "permitted_startup_input": "tracked_p01_public_startup_manifest_v1",
+  "permitted_services": [
+    "identity_probe",
+    "volatile_filesystem_probe",
+    "concurrent_delay_a",
+    "concurrent_delay_b",
+    "required_semantic_success",
+    "optional_intentional_failure",
+    "timeout_probe",
+    "signal_termination_probe"
+  ],
+  "permitted_output_class": "ordinary_file_removable_media_candidate_image",
+  "permitted_qemu_execution": "bounded_tcg_conformance_boot",
+  "permitted_removable_media_scope": "operator_initiated_non_installing_conformance_boot",
+  "resource_limits": {
+    "build_parallelism": 1,
+    "qemu_memory_mib": 512,
+    "qemu_vcpus": 1,
+    "qemu_timeout_seconds": 60,
+    "initramfs_result_tmpfs_mib": 8,
+    "micro_os_run_tmpfs_mib": 16,
+    "maximum_services": 16
+  },
+  "retention_rule": "retain_only_in_named_ignored_build_directory_until_operator_cleanup",
+  "cleanup_rule": "cleanup_is_explicit_and_never_targets_devices_or_host_boot_state",
+  "internal_disk_mutation": "prohibited",
+  "installation": "prohibited",
+  "network_update": "prohibited",
+  "external_components": "prohibited",
+  "production_use": "prohibited",
+  "artifact_acceptance": false,
+  "assembly_generation_membership": false,
+  "activation": false,
+  "recovery": false,
+  "runtime_readiness": false
+}

@@ -9,7 +9,9 @@
 | CUDA Pascal/Volta release | CUDA C++17, SM 6.1/7.0 | CUDA 12.x is the documented family; CUDA 13 or newer is rejected for architectures below SM 7.5 | Compatible NVIDIA driver/device for runtime tests | Default configured architectures are `61;70`. |
 | CUDA Turing and newer | CUDA C++17, SM 7.5+ | CUDA 12.x validated; CUDA 13.x may target SM 7.5+ | Compatible NVIDIA driver/device for runtime tests | Device-independent CPU tests do not require the driver. |
 | CUDA Kepler release | CUDA C++17, legacy SM below 5.0 | CUDA 11.4 is the documented separate family; CUDA 12 or newer is rejected | Compatible legacy driver/device for runtime tests | Must not be combined with the CUDA 12.x release family. |
-| P01 USB image | Not selected | No current toolchain contract | No current claim | Candidate Debian tools are inventoried only; P01 has not begun. |
+| P01 micro-OS | strict static C11, x86_64 Linux userspace ABI | GCC/static libc on the current host; warnings are errors | No for host validation | Shell-free PID 1 and eight compiled public conformance probes. |
+| P01 kernel candidate | x86_64 Linux bzImage | exact reviewed external revision; GCC/binutils-compatible toolchain; serial `-j1` build | No for construction | Configuration resolves from `x86_64_defconfig` and tracked P0 fragments; output remains an ASM candidate. |
+| P01 removable-media candidate | GRUB hybrid ISO | `grub-mkrescue` and `xorriso`; BIOS/UEFI module packages determine constructed modes | No for construction | QEMU TCG is optional; OVMF is separately required for UEFI boot proof. |
 
 CUDA runtime validation is distinct from CUDA compilation. A successful CUDA
 configure/build does not claim device execution when no compatible device is

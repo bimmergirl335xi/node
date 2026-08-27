@@ -30,10 +30,11 @@ static C link support, a reviewed Linux source tree or bundle, tmpfs support,
 and leaf-operation privilege tools for mounting and kexec loading/execution.
 P0 does not install packages and does not require privileged compilation.
 
-P01 USB-image tools are planning inputs only. No image layout, bootloader,
-partition table, filesystem, signing workflow, or package set is selected by
-this inventory. Candidate tools remain non-mandatory until a later P01
-contract chooses the image format and validates the host workflow.
+P01 selects an x86_64 GRUB hybrid ISO candidate format. Static C linking,
+`cpio`, `gzip`, `grub-mkrescue`, and `xorriso` are required to produce that
+candidate. GRUB BIOS and x86_64 EFI modules are conditional on the firmware
+modes being built. QEMU TCG and OVMF remain optional validation facilities.
+Physical-media writing tools are operator-only and are never invoked by P01.
 
 Python has no declared package dependency for this slice. Python 3 is used only
 to run repository scripts and P0 JSON record validation, so no generic Python

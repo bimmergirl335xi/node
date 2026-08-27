@@ -40,5 +40,14 @@ target_compile_options(
 add_subdirectory(micro_os)
 
 if(PROMETHEUS_BUILD_TESTS)
+    add_test(
+        NAME p01_device_write_prohibition
+        COMMAND
+            "${CMAKE_CURRENT_SOURCE_DIR}/p01_boot/tests/test-device-prohibition.sh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/p01_boot/scripts/lib-p01.sh"
+    )
+endif()
+
+if(PROMETHEUS_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

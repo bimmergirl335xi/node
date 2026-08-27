@@ -80,6 +80,8 @@ struct supervisor {
     char host_root[NODE_P01_MAX_PATH_BYTES];
 };
 
+static int diagnostic_serial_fd = -1;
+
 static uint64_t monotonic_milliseconds(void) {
     struct timespec now;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
@@ -91,12 +93,18 @@ static uint64_t monotonic_milliseconds(void) {
 
 static void emit_human(const char *format, ...) {
     va_list arguments;
+    char message[512];
+    int length;
     va_start(arguments, format);
-    (void)fprintf(stdout, "NODE_P01 ");
-    (void)vfprintf(stdout, format, arguments);
-    (void)fputc('\n', stdout);
-    (void)fflush(stdout);
+    length = vsnprintf(message, sizeof(message), format, arguments);
     va_end(arguments);
+    if (length < 0 || (size_t)length >= sizeof(message)) {
+        (void)snprintf(message, sizeof(message), "bounded human diagnostic exhausted");
+    }
+    (void)dprintf(STDOUT_FILENO, "NODE_P01 %s\n", message);
+    if (diagnostic_serial_fd >= 0) {
+        (void)dprintf(diagnostic_serial_fd, "NODE_P01 %s\n", message);
+    }
 }
 
 static void emit_json(const char *record_type,
@@ -105,22 +113,32 @@ static void emit_json(const char *record_type,
                       const char *detail) {
     char escaped_subject[2 * NODE_P01_MAX_VALUE_BYTES];
     char escaped_detail[2 * NODE_P01_MAX_DETAIL_BYTES];
+    char record[1024];
+    int record_length;
     size_t subject_result = node_p01_json_escape(
         escaped_subject, sizeof(escaped_subject), subject, strlen(subject));
     size_t detail_result = node_p01_json_escape(
         escaped_detail, sizeof(escaped_detail), detail, strlen(detail));
     if (subject_result == SIZE_MAX || detail_result == SIZE_MAX) {
-        (void)fprintf(stdout,
-                      "{\"record\":\"diagnostic_failure\","
-                      "\"subject\":\"json_encoding\","
-                      "\"outcome\":\"bounded_output_exhausted\"}\n");
+        record_length = snprintf(
+            record, sizeof(record),
+            "{\"record\":\"diagnostic_failure\","
+            "\"subject\":\"json_encoding\","
+            "\"outcome\":\"bounded_output_exhausted\"}\n");
     } else {
-        (void)fprintf(stdout,
-                      "{\"record\":\"%s\",\"subject\":\"%s\","
-                      "\"outcome\":\"%s\",\"detail\":\"%s\"}\n",
-                      record_type, escaped_subject, outcome, escaped_detail);
+        record_length = snprintf(
+            record, sizeof(record),
+            "{\"record\":\"%s\",\"subject\":\"%s\","
+            "\"outcome\":\"%s\",\"detail\":\"%s\"}\n",
+            record_type, escaped_subject, outcome, escaped_detail);
     }
-    (void)fflush(stdout);
+    if (record_length < 0 || (size_t)record_length >= sizeof(record)) {
+        return;
+    }
+    (void)write(STDOUT_FILENO, record, (size_t)record_length);
+    if (diagnostic_serial_fd >= 0) {
+        (void)write(diagnostic_serial_fd, record, (size_t)record_length);
+    }
 }
 
 static int parse_u32_bounded(const char *value,
@@ -281,6 +299,9 @@ static int establish_filesystems(void) {
 
 static int establish_console(void) {
     int descriptor;
+    int serial_descriptor;
+    struct stat console_status;
+    struct stat serial_status;
     if (access("/dev/console", F_OK) != 0 && errno == ENOENT) {
         (void)mknod("/dev/console", S_IFCHR | 0600, makedev(5, 1));
     }
@@ -293,6 +314,16 @@ static int establish_console(void) {
         return 0;
     }
     if (descriptor > STDERR_FILENO) (void)close(descriptor);
+    serial_descriptor = open("/dev/ttyS0", O_WRONLY | O_NOCTTY | O_NONBLOCK |
+                                           O_CLOEXEC);
+    if (serial_descriptor >= 0 &&
+        fstat(STDOUT_FILENO, &console_status) == 0 &&
+        fstat(serial_descriptor, &serial_status) == 0 &&
+        console_status.st_rdev != serial_status.st_rdev) {
+        diagnostic_serial_fd = serial_descriptor;
+    } else if (serial_descriptor >= 0) {
+        (void)close(serial_descriptor);
+    }
     return 1;
 }
 
@@ -350,11 +381,28 @@ static void emit_service_result(const struct supervisor *supervisor, size_t inde
     const struct node_p01_service *service = &supervisor->manifest.services[index];
     const struct service_runtime *runtime = &supervisor->runtime[index];
     char detail[NODE_P01_MAX_DETAIL_BYTES];
-    (void)snprintf(detail, sizeof(detail),
-                   "process=%s semantic=%s required=%s restarts=%u",
-                   process_outcome_name(runtime->outcome),
-                   runtime->semantic_success ? "semantic_success" : "semantic_failure",
-                   service->required ? "true" : "false", runtime->restart_count);
+    if (runtime->launched && WIFEXITED(runtime->wait_status) &&
+        runtime->outcome != PROCESS_LAUNCH_FAILURE) {
+        (void)snprintf(detail, sizeof(detail),
+                       "process=%s exit_code=%d semantic=%s required=%s restarts=%u",
+                       process_outcome_name(runtime->outcome),
+                       WEXITSTATUS(runtime->wait_status),
+                       runtime->semantic_success ? "semantic_success" : "semantic_failure",
+                       service->required ? "true" : "false", runtime->restart_count);
+    } else if (runtime->launched && WIFSIGNALED(runtime->wait_status)) {
+        (void)snprintf(detail, sizeof(detail),
+                       "process=%s signal=%d semantic=%s required=%s restarts=%u",
+                       process_outcome_name(runtime->outcome),
+                       WTERMSIG(runtime->wait_status),
+                       runtime->semantic_success ? "semantic_success" : "semantic_failure",
+                       service->required ? "true" : "false", runtime->restart_count);
+    } else {
+        (void)snprintf(detail, sizeof(detail),
+                       "process=%s semantic=%s required=%s restarts=%u",
+                       process_outcome_name(runtime->outcome),
+                       runtime->semantic_success ? "semantic_success" : "semantic_failure",
+                       service->required ? "true" : "false", runtime->restart_count);
+    }
     emit_json("service_process_result", service->identity,
               process_outcome_name(runtime->outcome), detail);
     emit_json("service_semantic_result", service->identity,
@@ -771,6 +819,16 @@ static void terminal_policy(const struct boot_options *options, int host_mode) {
     for (;;) pause();
 }
 
+static void emergency_halt(void) {
+    const char message[] =
+        "NODE_P01 fatal early-environment failure; bounded halt requested\n";
+    (void)write(STDERR_FILENO, message, sizeof(message) - 1U);
+    bounded_delay(1U);
+    sync();
+    (void)reboot(RB_HALT_SYSTEM);
+    for (;;) pause();
+}
+
 static int usage(void) {
     (void)fprintf(stderr,
                   "usage: node_p01_init [--host-root DIR --manifest FILE] "
@@ -822,7 +880,7 @@ int main(int argument_count, char **arguments) {
         (void)setvbuf(stdout, NULL, _IONBF, 0);
     } else {
         if (!establish_filesystems() || !establish_console()) {
-            for (;;) pause();
+            emergency_halt();
         }
     }
     emit_json("micro_os_boot_attempt", NODE_P01_BOOT_IDENTITY, "entered",

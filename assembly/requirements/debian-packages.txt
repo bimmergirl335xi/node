@@ -37,13 +37,14 @@ zstd
 # matches toolchain-matrix.md. No one Debian package name is portable across
 # supported CUDA release families.
 
-# Planned P01 candidates only; do not install for P0 or this cleanup
-dosfstools
-e2fsprogs
-gdisk
-grub-efi-amd64-bin
+# P01 GRUB hybrid ISO construction and inspection
+grub-common
 grub-pc-bin
-mtools
-parted
-syslinux-common
+grub-efi-amd64-bin
 xorriso
+
+# Optional P01 emulator and UEFI validation
+qemu-system-x86
+ovmf
+
+# Physical-media writers remain operator-only and are not P01 dependencies.

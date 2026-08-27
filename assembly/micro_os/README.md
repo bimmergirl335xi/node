@@ -20,6 +20,8 @@ or report normal-runtime readiness.
 - mounts devtmpfs, procfs, sysfs, `/run` tmpfs, and a separate 8 MiB result
   tmpfs;
 - opens `/dev/console` and reports PID and kernel identity;
+- mirrors PID 1 records to an available distinct `ttyS0` diagnostic channel
+  while retaining `tty0` as the physical-console target;
 - parses only bounded `node.micro_os.*` options;
 - loads only `/etc/node-p01/p01-public-startup-v1.manifest` during real boot;
 - validates every manifest entry before process creation;
