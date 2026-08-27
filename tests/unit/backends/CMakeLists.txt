@@ -126,6 +126,22 @@ if(TARGET prometheus_cuda_backend)
         NAME prometheus_cuda_evidence_adapter
         COMMAND test_cuda_evidence_adapter
     )
+
+    add_executable(test_cuda_device_worker
+        test_cuda_device_worker.cpp
+    )
+
+    target_link_libraries(test_cuda_device_worker
+        PRIVATE
+            prometheus_cuda_backend
+    )
+
+    target_compile_features(test_cuda_device_worker PRIVATE cxx_std_17)
+
+    add_test(
+        NAME prometheus_cuda_device_worker
+        COMMAND test_cuda_device_worker
+    )
 endif()
 
 if(NOT TARGET prometheus_cuda_runtime_compilation)

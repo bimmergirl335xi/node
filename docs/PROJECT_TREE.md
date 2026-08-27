@@ -1,6 +1,6 @@
 # Node — Tracked Project Tree
 
-This is a compact view of the tracked repository after GPU-7.1B. Generated
+This is a compact view of the tracked repository after GPU-7.2A. Generated
 build directories and ignored runtime artifacts are omitted. Directories not
 shown must not be inferred to exist.
 
@@ -126,10 +126,14 @@ node/
 │   │   │   ├── cuda_device.cu
 │   │   │   ├── cuda_device_pool.hpp
 │   │   │   ├── cuda_device_pool.cu
+│   │   │   ├── cuda_device_worker.hpp
+│   │   │   ├── cuda_device_worker.cpp
 │   │   │   ├── cuda_health.hpp
 │   │   │   ├── cuda_health.cu
 │   │   │   ├── cuda_job_queue.hpp
 │   │   │   ├── cuda_job_queue.cu
+│   │   │   ├── cuda_kernel_adapter.hpp
+│   │   │   ├── cuda_kernel_adapter.cpp
 │   │   │   ├── cuda_kernel_registry.hpp
 │   │   │   ├── cuda_kernel_registry.cu
 │   │   │   ├── cuda_memory_pool.hpp
@@ -218,6 +222,7 @@ node/
         │   ├── test_arm_linux_auxv.cpp
         │   ├── test_arm_processor_identity.cpp
         │   ├── test_cuda_backend_registry.cu
+        │   ├── test_cuda_device_worker.cpp
         │   ├── test_cuda_evidence_adapter.cpp
         │   ├── test_cuda_runtime_resources.cu
         │   ├── test_cuda_runtime_compilation.cpp

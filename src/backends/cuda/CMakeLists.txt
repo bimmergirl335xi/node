@@ -25,9 +25,11 @@ if(PROMETHEUS_CUDA_AVAILABLE)
         cuda_capabilities.cu
         cuda_device.cu
         cuda_device_pool.cu
+        cuda_device_worker.cpp
         cuda_evidence_adapter.cpp
         cuda_health.cu
         cuda_job_queue.cu
+        cuda_kernel_adapter.cpp
         cuda_kernel_registry.cu
         cuda_memory_pool.cu
         cuda_profiles.cpp
@@ -43,7 +45,9 @@ if(PROMETHEUS_CUDA_AVAILABLE)
         PUBLIC
             prometheus_backend_core
             prometheus_gpu_evidence_correlation
+            prometheus_cuda_kernels
             CUDA::cudart
+            Threads::Threads
     )
 
     target_compile_features(prometheus_cuda_backend PUBLIC cxx_std_17)
@@ -69,4 +73,15 @@ if(PROMETHEUS_CUDA_AVAILABLE)
     )
 
     target_compile_features(cuda_evidence_correlation_probe PRIVATE cxx_std_17)
+
+    add_executable(cuda_device_worker_probe
+        "${PROJECT_SOURCE_DIR}/tools/cuda_device_worker_probe.cpp"
+    )
+
+    target_link_libraries(cuda_device_worker_probe
+        PRIVATE
+            prometheus_cuda_backend
+    )
+
+    target_compile_features(cuda_device_worker_probe PRIVATE cxx_std_17)
 endif()
