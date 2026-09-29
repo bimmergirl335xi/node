@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate the Prometheus Node project skeleton in the folder containing this script.
+Generate the Prometheus Node project skeleton in the repository root.
 
 Default behavior:
 - Creates directories and missing files.
@@ -9,11 +9,11 @@ Default behavior:
 - Can optionally copy the current CUDA prototype into legacy/vision_swarm_11.cu.
 
 Examples:
-    python3 generate_prometheus_tree.py
-    python3 generate_prometheus_tree.py --dry-run
-    python3 generate_prometheus_tree.py --root /path/to/prometheus_node
-    python3 generate_prometheus_tree.py --copy-legacy "/path/to/vision_swarm(11).cu"
-    python3 generate_prometheus_tree.py --force
+    python3 python/generate_prometheus_tree.py
+    python3 python/generate_prometheus_tree.py --dry-run
+    python3 python/generate_prometheus_tree.py --root /path/to/prometheus_node
+    python3 python/generate_prometheus_tree.py --copy-legacy "/path/to/vision_swarm(11).cu"
+    python3 python/generate_prometheus_tree.py --force
 """
 
 from __future__ import annotations
@@ -785,7 +785,7 @@ def copy_legacy_source(
 
 
 def parse_args() -> argparse.Namespace:
-    script_dir = Path(__file__).resolve().parent
+    repository_root = Path(__file__).resolve().parent.parent
 
     parser = argparse.ArgumentParser(
         description="Generate the Prometheus Node project skeleton."
@@ -793,9 +793,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--root",
         type=Path,
-        default=script_dir,
+        default=repository_root,
         help=(
-            "Target project root. Defaults to the directory containing this script. "
+            "Target project root. Defaults to the parent of this script's directory. "
             "Use --root prometheus_node when running the script from one directory above."
         ),
     )

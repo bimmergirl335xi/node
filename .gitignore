@@ -1,2 +1,52 @@
+# Repository-local generated state
 /build/
 /.node-local/
+/node-private-runtime/
+
+# CMake outputs accidentally created at the repository root
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/cmake_install.cmake
+/compile_commands.json
+
+# Compiled and kernel build products
+*.a
+*.o
+*.obj
+*.so
+*.so.*
+*.ko
+*.mod
+*.mod.c
+*.cmd
+Module.symvers
+modules.order
+
+# VM, QEMU, ISO, and debugger state
+*.iso
+*.qcow
+*.qcow2
+*.raw
+*.vmdk
+*.qemu.log
+*.serial.log
+*.pid
+*.sock
+.gdb_history
+vgcore.*
+core
+core.*
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor and operating-system temporary files
+*~
+*.swp
+*.swo
+.DS_Store
