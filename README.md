@@ -119,8 +119,20 @@ changing code. Work in the owning subsystem, keep CPU-only paths independent of
 CUDA, add focused tests for changed behavior, and keep generated output under a
 named `build/` directory.
 
-The host build remains CMake-based and transitional. A CPU-only configuration
-can be requested explicitly:
+The canonical host-native boot build reuses the validated P01 image machinery:
+
+```sh
+./scripts/build-node.sh
+```
+
+It requires the exact external Linux kernel checkout documented in
+`assembly/p01_boot/README.md` (override its default location with
+`--kernel-source PATH`). Generated state is disposable and remains under
+`build/`; the successfully validated development ISO is always promoted to
+`build/artifacts/node-current.iso`.
+
+Component development remains CMake-based. A CPU-only configuration can be
+requested explicitly:
 
 ```sh
 cmake -S . -B build/local \

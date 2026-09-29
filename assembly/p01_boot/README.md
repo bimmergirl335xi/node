@@ -40,6 +40,19 @@ The stages build and inspect the permanent micro-OS, initramfs, reviewed
 kernel, image tree, candidate ISO when supported, digests, five independent
 candidate records, direct TCG smoke evidence, and optional OVMF evidence.
 
+For the normal host-native development build, use the repository wrapper:
+
+```sh
+./scripts/build-node.sh
+```
+
+The wrapper runs the existing P01 host tests, candidate construction,
+inspection, record validation, and safety-boundary checks without running
+QEMU. Only after those checks succeed does it promote the current boot image to
+`build/artifacts/node-current.iso`. The complete `build/` directory is ignored,
+disposable, and reconstructible; the external kernel source checkout remains
+outside this repository.
+
 The direct QEMU proof uses the kernel/initramfs pair and therefore proves BIOS
 firmware-independent kernel entry rather than GRUB BIOS boot. BIOS bootloader
 support requires ISO inspection and a QEMU ISO boot; UEFI support additionally
@@ -67,6 +80,12 @@ records/*.json
 validation/*.json
 validation/*.log
 ```
+
+The developer wrapper additionally exposes current, disposable copies beneath
+`build/artifacts/`: `node-current.iso`, `bzImage`,
+`initramfs.cpio.gz`, `SHA256SUMS`, and `build-info.json`. `vmlinux` and
+`System.map` are included when the existing kernel build produces them. The
+phase-specific candidate names remain internal to the P01 builder.
 
 All are ASM candidate outputs under
 `contracts/p01-conformance-authority-v1.json`. Digests, inspection, and QEMU

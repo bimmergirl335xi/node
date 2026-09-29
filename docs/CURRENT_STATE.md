@@ -158,6 +158,15 @@ components, named directories beneath `build/` contain generated state, and
 QEMU is the intended pre-hardware boot environment. Serial output is the
 primary boot diagnostic surface. Docker is not required for normal development.
 
+`scripts/build-node.sh` is the normalized host-native boot build entry point.
+It orchestrates the existing P01 builder and its non-QEMU validation, keeps all
+generated repository state beneath disposable `build/`, and safely promotes a
+complete current ISO to `build/artifacts/node-current.iso`. It also exposes the
+current kernel, initramfs, checksums, build identity, and existing kernel debug
+artifacts when available. A failed or partial build does not replace the last
+successfully promoted ISO; the exact Linux kernel source remains an external
+checkout.
+
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.
 
