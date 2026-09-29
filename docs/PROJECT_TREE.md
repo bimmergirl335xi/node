@@ -1,254 +1,115 @@
-# Node — Tracked Project Tree
+# Node — Project Navigation
 
-This is a compact view of the tracked repository after GPU-7.2A. Generated
-build directories and ignored runtime artifacts are omitted. Directories not
-shown must not be inferred to exist.
+Use this routing map to find the owner of a task. It intentionally omits most
+individual files and all generated output.
 
-```text
-node/
-├── .gitignore
-├── README.md
-├── AI_CONTEXT.md
-├── ARCHITECTURE.md
-├── CHANGELOG.md
-├── CMakeLists.txt
-├── CONTRIBUTING.md
-├── LICENSE
-├── PATCH_NOTES.md
-├── PROTOCOL.md
-├── SECURITY.md
-├── THREAT_MODEL.md
-├── TIME.md
-├── cmake/
-├── config/
-├── include/
-├── legacy/
-├── manifests/
-├── models/
-├── python/
-├── schemas/
-├── scripts/
-├── simulator/
-├── systemd/
-├── third_party/
-├── tools/
-├── udev/
-├── benchmarks/
-├── docs/
-│   ├── CURRENT_STATE.md
-│   ├── HANDOFF_AFTER_PHASE_5.md
-│   ├── PROJECT_TREE.md
-│   ├── architecture/
-│   │   ├── node_runtime.md
-│   │   ├── service_model.md
-│   │   ├── distributed_mesh.md
-│   │   ├── proximity_gradient.md
-│   │   ├── cognitive_services.md
-│   │   ├── data_flow.md
-│   │   ├── acs/
-│   │   │   ├── README.md
-│   │   │   ├── ACS-0000-charter.md
-│   │   │   ├── ACS-0001-core-principles.md
-│   │   │   ├── ACS-0002-relationship-classes.md
-│   │   │   ├── ACS-0003-signal-taxonomy.md
-│   │   │   ├── ACS-0004-endpoints-and-ports.md
-│   │   │   ├── ACS-0005-connection-lifecycle.md
-│   │   │   ├── ACS-0006-admission-and-budgets.md
-│   │   │   ├── ACS-0007-security-and-trust.md
-│   │   │   ├── ACS-0008-immune-integration.md
-│   │   │   └── ACS-0009-runtime-integration.md
-│   │   ├── memory/
-│   │   │   ├── README.md
-│   │   │   ├── MEM-0000-charter.md
-│   │   │   ├── MEM-0001-core-principles.md
-│   │   │   ├── MEM-0002-memory-roles.md
-│   │   │   ├── MEM-0003-identity-and-versioning.md
-│   │   │   ├── MEM-0004-operation-contracts.md
-│   │   │   ├── MEM-0005-availability-and-consistency.md
-│   │   │   ├── MEM-0006-retention-and-lifecycle.md
-│   │   │   ├── MEM-0007-distributed-custody.md
-│   │   │   ├── MEM-0008-recovery-and-reconstruction.md
-│   │   │   ├── MEM-0009-acs-integration.md
-│   │   │   └── MEM-0010-conformance.md
-│   │   └── immune/
-│   │       ├── README.md
-│   │       ├── IMM-0000-charter-and-scope.md
-│   │       └── IMM-0001-core-invariants.md
-│   ├── development/
-│   ├── handoffs/
-│   ├── hardware/
-│   ├── migration/
-│   ├── protocols/
-│   └── security/
-├── src/
-│   ├── backends/
-│   │   ├── CMakeLists.txt
-│   │   ├── compute_backend.hpp
-│   │   ├── backend_registry.hpp
-│   │   ├── backend_registry.cpp
-│   │   ├── cpu/
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── cpu_backend.hpp
-│   │   │   ├── cpu_backend.cpp
-│   │   │   ├── cpu_identity.hpp
-│   │   │   ├── cpu_identity.cpp
-│   │   │   ├── cpu_topology.hpp
-│   │   │   ├── cpu_topology.cpp
-│   │   │   ├── cpu_capabilities.hpp
-│   │   │   ├── cpu_capabilities.cpp
-│   │   │   ├── cpu_health.hpp
-│   │   │   ├── cpu_health.cpp
-│   │   │   ├── cpu_capacity.hpp
-│   │   │   ├── cpu_capacity.cpp
-│   │   │   ├── cpu_thread_pool.hpp
-│   │   │   ├── cpu_thread_pool.cpp
-│   │   │   ├── simd_dispatch.hpp
-│   │   │   └── simd_dispatch.cpp
-│   │   ├── arm/
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── arm_capabilities.hpp
-│   │   │   ├── arm_capabilities.cpp
-│   │   │   ├── arm_linux_auxv.hpp
-│   │   │   ├── arm_linux_auxv.cpp
-│   │   │   ├── arm_processor_identity.hpp
-│   │   │   ├── arm_processor_identity.cpp
-│   │   │   ├── neon_dispatch.hpp
-│   │   │   └── neon_dispatch.cpp
-│   │   ├── cuda/
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── cuda_backend.hpp
-│   │   │   ├── cuda_backend.cu
-│   │   │   ├── cuda_evidence_adapter.hpp
-│   │   │   ├── cuda_evidence_adapter.cpp
-│   │   │   ├── cuda_capabilities.hpp
-│   │   │   ├── cuda_capabilities.cu
-│   │   │   ├── cuda_device.hpp
-│   │   │   ├── cuda_device.cu
-│   │   │   ├── cuda_device_pool.hpp
-│   │   │   ├── cuda_device_pool.cu
-│   │   │   ├── cuda_device_worker.hpp
-│   │   │   ├── cuda_device_worker.cpp
-│   │   │   ├── cuda_health.hpp
-│   │   │   ├── cuda_health.cu
-│   │   │   ├── cuda_job_queue.hpp
-│   │   │   ├── cuda_job_queue.cu
-│   │   │   ├── cuda_kernel_adapter.hpp
-│   │   │   ├── cuda_kernel_adapter.cpp
-│   │   │   ├── cuda_kernel_registry.hpp
-│   │   │   ├── cuda_kernel_registry.cu
-│   │   │   ├── cuda_memory_pool.hpp
-│   │   │   ├── cuda_memory_pool.cu
-│   │   │   ├── cuda_profiles.hpp
-│   │   │   ├── cuda_profiles.cpp
-│   │   │   ├── cuda_runtime_compilation.hpp
-│   │   │   └── cuda_runtime_compilation.cpp
-│   │   ├── accelerator/
-│   │   └── storage/
-│   ├── core/
-│   │   ├── CMakeLists.txt
-│   │   ├── acs/
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── acs_types.hpp
-│   │   │   ├── acs_registry.hpp
-│   │   │   ├── acs_registry.cpp
-│   │   │   ├── acs_lifecycle.hpp
-│   │   │   ├── acs_lifecycle.cpp
-│   │   │   ├── acs_admission.hpp
-│   │   │   └── acs_admission.cpp
-│   │   ├── adaptive_state.hpp
-│   │   ├── adaptive_state.cpp
-│   │   ├── architecture_graph.hpp
-│   │   ├── architecture_graph.cpp
-│   │   ├── architecture_shadow.hpp
-│   │   ├── architecture_shadow.cpp
-│   │   ├── execution_policy.hpp
-│   │   ├── execution_policy.cpp
-│   │   ├── proposal_abi.h
-│   │   ├── proposal_abi.cpp
-│   │   ├── service.hpp
-│   │   ├── service.cpp
-│   │   ├── service_context.hpp
-│   │   ├── service_context.cpp
-│   │   ├── service_manager.hpp
-│   │   ├── service_manager.cpp
-│   │   ├── capability_registry.hpp
-│   │   ├── capability_registry.cpp
-│   │   ├── configuration.hpp
-│   │   ├── configuration.cpp
-│   │   ├── health_monitor.hpp
-│   │   ├── health_monitor.cpp
-│   │   ├── node_identity.hpp
-│   │   ├── node_identity.cpp
-│   │   ├── node_runtime.hpp
-│   │   ├── node_runtime.cpp
-│   │   ├── resource_manager.hpp
-│   │   ├── resource_manager.cpp
-│   │   ├── shutdown_manager.hpp
-│   │   ├── shutdown_manager.cpp
-│   │   ├── task_scheduler.hpp
-│   │   └── task_scheduler.cpp
-│   ├── hardware/
-│   │   ├── CMakeLists.txt
-│   │   ├── gpu_evidence_correlation.hpp
-│   │   ├── gpu_evidence_correlation.cpp
-│   │   ├── linux_pci_inventory.hpp
-│   │   └── linux_pci_inventory.cpp
-│   ├── kernels/
-│   ├── diagnostics/
-│   ├── experiments/
-│   ├── learning/
-│   ├── memory/
-│   ├── mesh/
-│   ├── messaging/
-│   ├── models/
-│   ├── protocol/
-│   ├── provisioning/
-│   ├── runtime/
-│   ├── security/
-│   ├── services/
-│   ├── storage/
-│   └── time/
-└── tests/
-    ├── integration/
-    └── unit/
-        ├── backends/
-        │   ├── CMakeLists.txt
-        │   ├── test_cpu_foundation.cpp
-        │   ├── test_cpu_backend_registry.cpp
-        │   ├── test_cpu_health_capacity.cpp
-        │   ├── test_cpu_thread_pool.cpp
-        │   ├── test_cpu_simd_dispatch.cpp
-        │   ├── test_arm_capabilities.cpp
-        │   ├── test_arm_linux_auxv.cpp
-        │   ├── test_arm_processor_identity.cpp
-        │   ├── test_cuda_backend_registry.cu
-        │   ├── test_cuda_device_worker.cpp
-        │   ├── test_cuda_evidence_adapter.cpp
-        │   ├── test_cuda_runtime_resources.cu
-        │   ├── test_cuda_runtime_compilation.cpp
-        │   └── test_hailo_backend.cpp
-        ├── core/
-        │   ├── CMakeLists.txt
-        │   ├── acs_test_fixture.hpp
-        │   ├── test_acs_types.cpp
-        │   ├── test_acs_registry.cpp
-        │   ├── test_acs_lifecycle.cpp
-        │   ├── test_acs_admission.cpp
-        │   ├── test_acs_concurrency.cpp
-        │   ├── test_service_lifecycle.cpp
-        │   ├── test_execution_policy.cpp
-        │   ├── test_adaptive_state.cpp
-        │   ├── test_architecture_graph.cpp
-        │   ├── test_architecture_shadow.cpp
-        │   └── test_proposal_abi.cpp
-        ├── kernels/
-        ├── hardware/
-        │   ├── CMakeLists.txt
-        │   ├── test_gpu_evidence_correlation.cpp
-        │   └── test_linux_pci_inventory.cpp
-        └── protocol/
-```
+## Start here
 
-There is no tracked `docs/architecture/bootstrap/` directory in ACS-R001. The
-presence of placeholder source elsewhere in the tree does not imply completed
-implementation.
+- public overview and supported workflow: `README.md`
+- agent operating rules: `AGENTS.md`
+- current integrated implementation: `docs/CURRENT_STATE.md`
+- durable architecture context: `AI_CONTEXT.md`
+- build configuration: `CMakeLists.txt`, `cmake/`
+
+## Boot and micro-OS
+
+- overall assembly boundary: `assembly/README.md`
+- permanent PID 1 and startup manifest: `assembly/micro_os/`
+- P01 candidate image and QEMU proof: `assembly/p01_boot/`
+- PID 1 sequencing contract: `assembly/init/`
+- RAM-only kernel/initramfs proof: `assembly/ram_assembly_p0/`
+- public profiles and requirements: `assembly/profiles/`,
+  `assembly/requirements/`
+
+Linux kernel source is external. Do not look for or vendor it here.
+
+## Assembly providers and public interfaces
+
+- external-component C ABI: `interfaces/`
+- public manifest format: `assembly/manifests/public/`
+- parser/validator providers: `assembly/providers/`
+- assembly conformance tests: `assembly/tests/`
+
+## CPU backend
+
+- generic CPU identity, topology, capability, health, capacity, worker pool,
+  and SIMD selection: `src/backends/cpu/`
+- ARM-specific evidence enrichment: `src/backends/arm/`
+- backend registry/contracts: `src/backends/`
+- focused tests: `tests/unit/backends/`
+
+## GPU and CUDA backend
+
+- generic Linux PCI inventory and evidence correlation: `src/hardware/`
+- CUDA backend, queues, registry, adapters, and worker: `src/backends/cuda/`
+- CUDA kernels: `src/kernels/`
+- hardware tests: `tests/unit/hardware/`
+- backend and worker tests: `tests/unit/backends/`
+- kernel tests: `tests/unit/kernels/`
+
+CUDA-independent hardware questions should start in `src/hardware/`, not the
+CUDA backend.
+
+## Other hardware backends
+
+- accelerator abstractions and early Hailo work: `src/backends/accelerator/`
+- AMD, Phi, and storage backend areas: `src/backends/amd/`,
+  `src/backends/phi/`, `src/backends/storage/`
+- hardware profiles/configuration: `config/hardware_profiles/`
+
+Treat empty or placeholder files as unimplemented.
+
+## Runtime and services
+
+- runtime/service lifecycle and shared state: `src/core/`
+- ACS runtime-local foundation: `src/core/acs/`
+- service implementations: `src/services/`
+- scheduling/runtime helpers: `src/runtime/`
+- runtime/core tests: `tests/unit/core/`
+
+## Data, messaging, and mesh areas
+
+- memory structures: `src/memory/`
+- messaging and protocol: `src/messaging/`, `src/protocol/`
+- mesh: `src/mesh/`
+- storage: `src/storage/`
+- diagnostics: `src/diagnostics/`
+- security/provisioning: `src/security/`, `src/provisioning/`
+
+Several of these areas remain partial or placeholder-level; confirm their state
+in source and `docs/CURRENT_STATE.md` before relying on them.
+
+## Public architecture
+
+- ACS specifications: `docs/architecture/acs/`
+- memory specifications: `docs/architecture/memory/`
+- immune specifications: `docs/architecture/immune/`
+- dependency boundaries: `docs/development/dependencies.md`
+
+These specifications may describe planned behavior. They do not prove an
+implementation exists.
+
+## Legacy and migration reference
+
+- current production robot behavior: `legacy/vision_swarm_11.cu`
+- retained historical ARM handoff: `docs/handoffs/ARM_A1_CODEX_HANDOFF.md`
+
+Historical handoffs are evidence, not current authority.
+
+## Developer tooling
+
+- general tools and probes: `tools/`
+- shell helpers: `scripts/`
+- Python utilities: `python/`
+- simulation code: `simulator/`
+- test fixtures and failure scenarios: `tests/fixtures/`, `tests/failure/`
+
+## Generated output
+
+- all build products, CMake state, images, validation logs, and temporary
+  staging: `build/`
+- operator-local inputs: `.node-local/`
+- private runtime material: `node-private-runtime/`
+
+These paths are ignored and non-authoritative. `build/` may be deleted in full
+and recreated by future tooling.

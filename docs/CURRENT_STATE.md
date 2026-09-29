@@ -1,1274 +1,183 @@
 # Current State
 
-## Summary
+This is a snapshot of the integrated repository, not a development diary.
+Historical validation details remain available in Git history and retained
+architecture/handoff documents.
 
-Node has completed kernel Phases 1 through 5, the Phase 6 CUDA backend
-foundation, the Phase 7.1 generic CPU foundation, and Integration Checkpoint
-I-001 for bounded CPU execution and ARM discovery.
+## Current repository baseline
 
-RC-001 integrates B-001, S-001, and A-001 through I-002: service lifecycle,
-execution policy, bounded NVRTC readiness, adaptive state, architecture shadow
-validation, and the native proposal ABI are now part of the integrated line.
-Public ACS-0000 through ACS-0009, MEM-0000 through MEM-0010, and IMM-0000
-through IMM-0001 are also present as Draft architecture specifications.
+The normalization branch `dev` was created directly from `main` commit
+`49bbba3d27c05e952307569668cea31aec98335f`. At branch creation,
+`lane/runtime` resolved to the same commit, so no branch merge was needed.
 
-These foundations do not redirect robot execution away from the legacy source
-of truth and do not establish live ACS connections, implement MEM persistence,
-IMM behavior, live architecture application, or bootstrap.
+That baseline combines the public runtime/ACS foundation, CPU and ARM work,
+GPU inventory/evidence/execution slices, RAM assembly work, and the P01
+micro-OS/image path. The cleanup on `dev` changes repository organization and
+documentation only; it does not alter runtime behavior.
 
-Prometheus remains a distributed cognitive neural mesh. Capacity scaling means
-running fewer, smaller, or narrower whole specialist instances on smaller
-machines and more or larger specialists on larger machines. Cross-GPU
-tensor/model sharding is a separate optional future capability.
+## Current boot path
 
-## Preserved Safety and Architecture Boundaries
-
-- Existing robot-facing behavior remains unchanged.
-- `legacy/vision_swarm_11.cu` remains the current robot behavior source of
-  truth.
-- The Pico remains the authoritative cycle source.
-- CUDA is not the cognitive master.
-- No GPU is selected as a permanent master.
-- Runtime ordinals are not durable identities.
-- Discovery does not launch production kernels.
-- Device-pool planning does not allocate production memory.
-- Peer support is queried but not activated automatically.
-- Health telemetry does not silently convert unknown values into healthy.
-- Core backend code requires no GUI or display server.
-- Placeholder files are not considered implemented.
-- Kernel metadata alone is not considered executable coverage.
-- Model-promotion authority remains outside kernels.
-- Runtime compilation does not authorize or execute generated CUDA artifacts.
-- Shadow architecture success does not authorize live application.
-- Proposal, validation, shadow evaluation, live application, persistence, and
-  deployment authority remain separate.
-
-## Confirmed Before Phase 6
-
-### Phase 1
-
-Activation and reduction kernels.
-
-### Phase 2
-
-Dense FP32, FP64, and integer accumulation.
-
-### Phase 3
-
-LayerNorm and RMSNorm.
-
-### Phase 4
-
-Temporal state and prediction operations.
-
-### Phase 5.1
-
-Local Hebbian, Oja, and predictive-delta learning.
-
-### Phase 5.2
-
-Optimizer state and flat-parameter update API:
-
-- signal accumulation
-- SGD
-- momentum
-- RMSProp
-- Adam
-- ascent/descent
-- signal, delta, and parameter clipping
-- decoupled weight decay
-- masks
-- shadow and applied modes
-- optimizer-state reset
-- step-counter utilities
-- FP32 and FP64
-
-Shadow mode does not mutate parameters or optimizer state.
-
-### Phase 5.3
-
-Reported complete before Phase 6:
-
-- candidate-update validation
-- non-finite detection
-- norm and magnitude summaries
-- saturation counts
-- changed-parameter counts
-- rejection bitmasks
-- candidate metadata/manifests
-- no promotion policy inside kernels
-
-The user reported all tests pass through candidate validation.
-
-## Phase 6.1 — CUDA Profiles and Capabilities
-
-### Added
+The implemented candidate path is:
 
 ```text
-src/backends/cuda/cuda_profiles.hpp
-src/backends/cuda/cuda_profiles.cpp
-src/backends/cuda/cuda_capabilities.hpp
-src/backends/cuda/cuda_capabilities.cu
-tools/cuda_capability_probe.cu
+selected external Linux kernel
+    -> static C11 /init
+    -> bounded volatile filesystems
+    -> fixed P01 startup manifest
+    -> supervised public proof services
+    -> serial/JSONL evidence and bounded terminal action
 ```
 
-### Implemented
-
-- architecture-family classification
-- compute-capability representation
-- CUDA 12 legacy-family classification
-- CUDA 13 modern-family classification
-- project support policy
-- tri-state support values
-- immutable hardware capability reporting
-- compile-time/runtime/driver CUDA version reporting
-- explicit unknown binary-image and kernel-registry coverage
-
-### Bench Validation
-
-```text
-Visible devices: 2
-Both devices: Quadro RTX 4000
-Compute capability: 7.5
-Architecture: Turing
-Toolkit/runtime/driver-supported CUDA: 12.4
-Probe exit status: 0
-```
-
-## Phase 6.2 — Stable Identity and Discovery
-
-### Added
-
-```text
-src/backends/cuda/cuda_device.hpp
-src/backends/cuda/cuda_device.cu
-tools/cuda_device_discovery_probe.cu
-```
-
-### Implemented
-
-- canonical CUDA UUID formatting
-- persistent Prometheus keys derived from UUID
-- temporary ordinal snapshots
-- PCI location reporting
-- per-device discovery status
-- partial-failure retention
-- fatal identity/capability rejection without silently dropping diagnostics
-- backend-registration readiness
-
-### Bench Validation
-
-```text
-Discovery status: success
-Reported visible devices: 2
-Stable identities: 2
-Capability records: 2
-Registration-ready records: 2
-Probe exit status: 0
-```
-
-Two stable UUID-backed device records and their temporary PCI observations were
-validated. Exact host device identifiers are omitted from this public state
-record.
-
-## Phase 6.3 — Health and Observability
-
-### Added
-
-```text
-src/backends/cuda/cuda_health.hpp
-src/backends/cuda/cuda_health.cu
-tools/cuda_health_probe.cu
-```
-
-### Implemented
-
-- UUID-resolved NVML health provider
-- runtime ordinal/UUID revalidation
-- timestamped health snapshots
-- total/free/used memory
-- temperature
-- power
-- GPU and memory utilization
-- ECC and retired-page reporting when supported
-- raw clock-event mask
-- explicit unsupported/provider-unavailable/query-failure states
-- safe CUDA memory fallback
-- preservation of the caller's selected CUDA device
-
-### Important Build Correction
-
-On the current glibc system, the direct `nvcc` probe command must not include:
-
-```text
--ldl
-```
-
-Including it caused:
-
-```text
-nvlink warning: Skipping incompatible
-/usr/lib/x86_64-linux-gnu/libdl.a when searching for -ldl
-```
-
-Removing `-ldl` produced compile exit status 0. Dynamic loading continued to
-work.
-
-### Bench Validation
-
-Both devices reported:
-
-```text
-runtime binding: matched
-NVML provider: ready
-query: success
-issues: none
-```
-
-Memory, temperature, power, GPU utilization, and memory utilization were
-reported independently. Unsupported ECC and retired-page queries remained
-explicitly unsupported.
-
-Probe exit status: 0.
-
-## Phase 6.4 — Multi-Device Pool and Capacity Model
-
-### Added
-
-```text
-src/backends/cuda/cuda_device_pool.hpp
-src/backends/cuda/cuda_device_pool.cu
-tools/cuda_device_pool_probe.cu
-```
-
-### Implemented
-
-- complete CUDA inventory
-- UUID-keyed lookup
-- capability and health snapshots
-- static and observed memory summaries
-- heterogeneous-architecture detection
-- directed peer-capability matrix
-- whole-specialist placement planning
-- `spread`, `pack`, and `stable_order` policies
-- per-request device allowlists
-- existing advisory memory commitments
-- observed-memory requirement/fallback policy
-- no automatic peer activation
-- no production allocation
-
-### Bench Validation
-
-```text
-Pool status: success
-Visible devices: 2
-Stable identities: 2
-Registration-ready devices: 2
-Usable runtime bindings: 2
-Observed-memory devices: 2
-Heterogeneous architectures: no
-Total static GPU memory: 15.56 GiB
-Observed free GPU memory: 14.76 GiB
-```
-
-Directed peer access was reported supported in both directions.
-
-Planning results:
-
-```text
-Four independent 256 MiB specialists:
-  2 instances on each GPU
-  unplaced: 0
-
-Two independent 128 MiB specialists restricted to one UUID:
-  2 instances on selected GPU
-  unplaced: 0
-```
-
-Probe exit status: 0.
-
-## Phase 6.5 — Backend and Kernel Registry Integration
-
-### Added or Replaced
-
-```text
-src/backends/compute_backend.hpp
-src/backends/backend_registry.hpp
-src/backends/backend_registry.cpp
-
-src/backends/cuda/cuda_backend.hpp
-src/backends/cuda/cuda_backend.cu
-src/backends/cuda/cuda_kernel_registry.hpp
-src/backends/cuda/cuda_kernel_registry.cu
-
-src/backends/CMakeLists.txt
-src/backends/cuda/CMakeLists.txt
-
-tools/cuda_backend_registry_probe.cu
-
-tests/unit/backends/test_cuda_backend_registry.cu
-tests/unit/backends/CMakeLists.txt
-
-requirements.txt
-docs/development/dependencies.md
-```
-
-### Generic Backend Registry
-
-Implemented:
-
-- generic backend kind/state/snapshot vocabulary
-- explicit ownership
-- duplicate-ID rejection
-- no global singleton
-- no hardware initialization during registration
-- room for CPU, ARM, AMD GPU, accelerator, Xeon Phi, and future backends
-
-### CUDA Backend
-
-Implemented:
-
-- discovery-backed initialization
-- ready/degraded/unavailable/stopped state reporting
-- pool refresh
-- health/capacity snapshot exposure
-- whole-specialist placement planning
-- per-device kernel-coverage evaluation
-- clean inventory shutdown
-
-Not implemented:
-
-- production kernel launches
-- production task dispatch
-- robot-path migration
-- automatic peer enablement
-- GPU reset
-- permanent GPU selection
-
-### CUDA Kernel Registry
-
-Implemented metadata-first descriptors containing:
-
-- kernel ID
-- kernel family
-- scalar types
-- compute-capability range
-- CUDA release-family compatibility
-- binary-image state
-- typed-adapter state
-- provenance
-
-Execution readiness requires:
-
-```text
-registered ID
-compatible architecture
-compatible release family
-proven binary image
-proven typed adapter
-```
-
-Metadata-only entries remain non-executable.
-
-### Bench Validation
-
-```text
-Backend registration: success
-Backend state: ready
-Backend usable: yes
-Registered backends: 1
-CUDA devices in snapshot: 2
-
-Synthetic ready descriptor:
-  coverage: complete
-  execution ready: yes
-
-Metadata-only descriptor:
-  coverage: unknown
-  execution ready: no
-  reason: compatible binary image not proven
-
-Placement assignments: 2
-Unplaced: 0
-
-Final backend state: stopped
-Phase 6.5 probe passed
-Probe exit status: 0
-```
-
-## Dependency State
-
-`requirements.txt` now exists.
-
-Phase 6 adds no mandatory Python package, so it currently contains documentation
-comments rather than packages.
-
-Dependency ownership:
-
-```text
-requirements.txt
-  direct Python packages
-
-requirements-lock.txt
-  reproducible Python package versions
-
-future signed provisioning/release manifests
-  CUDA/ROCm toolkits
-  NVIDIA/AMD drivers
-  NVML/management libraries
-  kernel modules
-  firmware
-  compilers
-  CMake
-  OS packages
-  filesystems
-  boot configuration
-  services
-  storage roles/layouts
-```
-
-## Minimal Headless Runtime Requirement
-
-Core backend files:
-
-- print nothing by default;
-- require no GUI;
-- require no display server;
-- require no desktop services;
-- perform no interactive prompting;
-- retain state in memory;
-- expose structured snapshots to future diagnostics and messaging layers.
-
-Human-readable output exists only in standalone probes.
-
-Future Pocket Decoder/Lens integration will provide the intended operator-facing
-diagnostic/provisioning interface.
-
-## Final Phase 6 CMake and CTest Integration
-
-Root integration is complete.
-
-Applied:
-
-```text
-find_package(Threads REQUIRED)
-add_subdirectory(src/backends)
-add_subdirectory(tests/unit/backends) inside the test-enabled branch
-```
-
-Backend linkage now includes:
-
-```text
-prometheus_backend_core -> Threads::Threads
-prometheus_cuda_backend -> prometheus_backend_core + CUDA::cudart
-```
-
-CUDA separable compilation is enabled for the CUDA backend target. No
-unconditional `-ldl` linkage was added.
-
-Validated build directory:
-
-```text
-build/phase-6-integrated
-```
-
-Validation configuration:
-
-```text
-PROMETHEUS_CUDA_ARCHITECTURES=75
-PROMETHEUS_BUILD_TESTS=ON
-PROMETHEUS_BUILD_BENCHMARKS=ON
-PROMETHEUS_BUILD_LEGACY_VISION=OFF
-```
-
-Final CTest result:
-
-```text
-1/7 kernel_foundation passed
-2/7 dense_kernels passed
-3/7 normalization_kernels passed
-4/7 temporal_kernels passed
-5/7 learning_kernels passed
-6/7 optimizer_kernels passed
-7/7 prometheus_cuda_backend_registry passed
-
-100% tests passed
-0 tests failed
-Total real test time: 2.27 seconds
-```
-
-Phase 6 is now integrated into the normal build and test graph. The remaining
-closeout item is a focused Git diff for archival/review.
-
-## Current Source of Truth
-
-```text
-legacy/vision_swarm_11.cu
-```
-
-## Next Phase
-
-Phase 7: CPU backend equivalents and reference operations.
-
-### Phase 7.1 Initial Scope
-
-- CPU identity
-- CPU topology
-- stable processor/package/core/thread representation
-- ISA and SIMD capabilities
-- NUMA awareness where available
-- memory/capacity reporting
-- minimal-headless operation
-- CPU backend state vocabulary aligned with Phase 6
-- no production robot-path change
-- no assumption that CPU is merely a CUDA fallback
-
-## Files Required for Phase 7.1
-
-```text
-AI_CONTEXT.md
-docs/CURRENT_STATE.md
-CMakeLists.txt
-src/backends/CMakeLists.txt
-src/backends/compute_backend.hpp
-src/backends/backend_registry.hpp
-src/backends/backend_registry.cpp
-src/backends/cuda/cuda_backend.hpp
-src/backends/cuda/cuda_backend.cu
-src/backends/cuda/cuda_device_pool.hpp
-src/backends/cuda/cuda_kernel_registry.hpp
-
-src/backends/cpu/cpu_backend.hpp
-src/backends/cpu/cpu_backend.cpp
-src/backends/cpu/cpu_capabilities.hpp
-src/backends/cpu/cpu_capabilities.cpp
-src/backends/cpu/cpu_thread_pool.hpp
-src/backends/cpu/cpu_thread_pool.cpp
-src/backends/cpu/simd_dispatch.hpp
-src/backends/cpu/simd_dispatch.cpp
-```
-
-Also provide the kernel headers selected for the first CPU-reference operations,
-the Phase 6 root-CMake/CTest output after integration, and a focused Git diff.
-
-## Suggested Opening Message for Phase 7.1
-
-> We completed Prometheus Phase 6: CUDA profiles, stable UUID identity,
-> health, multi-device capacity planning, generic backend integration, and a
-> metadata-first kernel registry. Direct probes pass on two Quadro RTX 4000s
-> under CUDA 12.4. Please read `AI_CONTEXT.md` and
-> `docs/CURRENT_STATE.md` first. We are beginning Phase 7.1: CPU identity,
-> topology, capabilities, and reference-operation foundations. Preserve robot
-> behavior, keep CPU first-class, support minimal headless nodes, keep CUDA as
-> one backend among many, and do not treat placeholders as implemented.
-
-## Phase 7.1 — CPU Identity, Topology, Health, Capacity, and Backend Foundation
-
-Phase 7.1 establishes CPU as a first-class Prometheus compute backend without
-making it a fallback after CUDA and without redirecting robot execution.
-
-### Implemented Files
-
-```text
-src/backends/cpu/CMakeLists.txt
-src/backends/cpu/cpu_identity.hpp
-src/backends/cpu/cpu_identity.cpp
-src/backends/cpu/cpu_topology.hpp
-src/backends/cpu/cpu_topology.cpp
-src/backends/cpu/cpu_capabilities.hpp
-src/backends/cpu/cpu_capabilities.cpp
-src/backends/cpu/cpu_health.hpp
-src/backends/cpu/cpu_health.cpp
-src/backends/cpu/cpu_capacity.hpp
-src/backends/cpu/cpu_capacity.cpp
-src/backends/cpu/cpu_backend.hpp
-src/backends/cpu/cpu_backend.cpp
-
-tools/cpu_backend_probe.cpp
-
-tests/unit/backends/test_cpu_foundation.cpp
-tests/unit/backends/test_cpu_backend_registry.cpp
-tests/unit/backends/test_cpu_health_capacity.cpp
-```
-
-The backend-test CMake integration was extended to register all three CPU tests
-and to prove that CPU and CUDA backends may coexist in the same explicit
-`BackendRegistry`.
-
-### CPU Identity and Topology Decisions
-
-- CPU identity is node-relative in Phase 7.1.
-- Package, physical-core, and hardware-thread keys are derived from observed
-  topology rather than temporary scheduler ordering alone.
-- A future globally durable CPU identity must combine the stable Prometheus node
-  identity with these node-relative topology keys.
-- Linux logical CPU numbers remain runtime observations and are not globally
-  durable identities.
-- Discovery distinguishes configured, online, and process-allowed logical
-  processors.
-- Process affinity and cpuset restrictions are honored.
-- Physical packages, cores, hardware threads, SMT sibling sets, NUMA nodes,
-  cache-sharing records, Linux core-type hints, and capacity hints are reported
-  when available.
-- Missing topology remains explicit through issue and partial-success records.
-
-### CPU Capability Decisions
-
-- Capability reporting targets process-allowed processors when affinity is
-  known; otherwise it conservatively targets all online processors.
-- Feature coverage records both common support across all targets and support on
-  any target.
-- Safe common SIMD selection includes scalar, SSE2, SSE4.1, AVX, AVX2,
-  AVX-512F, NEON, SVE, and SVE2 vocabulary.
-- x86-64, AArch64, ARMv7, RISC-V 64, and PPC64LE architecture vocabulary is
-  present.
-- Phase 7.1 reports SIMD capability but does not execute SIMD-specialized
-  operations.
-
-### CPU Health and Observability Decisions
-
-CPU health is refreshable and separate from immutable identity and capability
-records. It reports, where supported:
-
-- wall-clock and monotonic sample timestamps;
-- aggregate and per-logical-processor utilization counters;
-- baseline-only state before a utilization delta is available;
-- current and maximum frequency;
-- load averages;
-- total, available, and swap memory;
-- CPU and memory pressure information;
-- CPU-associated thermal-zone or hwmon sensors;
-- explicit issue records.
-
-Telemetry states include unknown, available, baseline-only, unsupported,
-provider-unavailable, and query-failed. Missing temperature, frequency, or
-pressure providers are never translated into healthy zero values.
-
-### CPU Capacity Decisions
-
-CPU capacity reporting distinguishes:
-
-- configured and online logical processors;
-- process-allowed logical processors;
-- physical and process-allowed physical cores;
-- packages and NUMA nodes;
-- common safe SIMD level;
-- total and currently available memory;
-- heterogeneous execution groups.
-
-Execution groups are formed from NUMA locality, Linux core type, and capacity
-hints where those observations exist.
-
-The Phase 7.1 planner is advisory only. It may report reserved cores, reserved
-logical processors, worker logical processors, and worker execution groups, but
-it does not create workers, change affinity, reserve memory, or bind cognitive
-workloads.
-
-The default capacity policy makes no hidden reservations, selects one advisory
-worker lane per physical core, and does not count SMT siblings as full worker
-lanes unless explicitly requested.
-
-### Generic CPU Backend Integration
-
-`CpuBackend` implements the generic `ComputeBackend` lifecycle:
-
-- constructed;
-- initializing;
-- ready;
-- degraded;
-- unavailable;
-- failed;
-- stopped.
-
-Its generic snapshot reports online logical processors as visible resources and
-advisory worker lanes as usable resources. Registration remains explicit and
-local; no global singleton or cognitive master is introduced.
-
-### Standalone Probe
-
-`tools/cpu_backend_probe.cpp` is a human-readable maintenance probe. Core CPU
-backend files remain silent and headless.
-
-The probe reports:
-
-- backend registration and lifecycle;
-- package and node-relative identity summaries;
-- configured, online, and process-allowed topology;
-- NUMA and cache summaries;
-- architecture and common SIMD capability;
-- health and telemetry provider states;
-- execution groups and advisory worker-lane planning;
-- explicit topology, capability, health, and capacity issues;
-- clean shutdown.
-
-The CMake probe target is `prometheus_cpu_backend_probe` and is excluded from
-ordinary builds unless explicitly requested.
-
-### Validation
-
-The user reported successful validation on the x86 validation workstation for:
-
-- CPU foundation discovery;
-- CPU backend registry lifecycle;
-- CPU health and capacity;
-- CPU/CUDA backend coexistence;
-- process-affinity-restricted behavior;
-- the requested CPU and full CTest sequences.
-
-The standalone CPU probe must exit with status 0 before this addendum is treated
-as the final Phase 7.1 closeout record.
-
-The safe build command on the 16 GiB validation system is:
-
-```text
-cmake --build <named-build-directory> --parallel 1
-```
-
-An unrestricted `--parallel` build caused global memory exhaustion and Linux
-killed the VS Code process. Kernel logs identified an OOM kill of `code`; the
-serial retry used substantially less memory. This was a build-concurrency
-resource event, not evidence of a runtime leak in the CPU backend.
-
-No unconditional `-ldl` linkage was added. The existing CUDA 12.4/glibc rule
-remains in force.
-
-### Explicitly Not Implemented in Phase 7.1
-
-- CPU worker threads or worker-pool lifecycle;
-- bounded work queues;
-- NUMA thread pinning;
-- work stealing;
-- SIMD operation dispatch;
-- CPU kernel registry or typed operation adapters;
-- CPU reference implementations of CUDA operation semantics;
-- neural-current scheduling or neuron storage;
-- production task dispatch;
-- robot-path migration.
-
-Placeholder files remain placeholders until their implementation phase.
-
-### Current Robot Behavior Source of Truth
-
-```text
-legacy/vision_swarm_11.cu
-```
-
-### Phase 7.2 Direction
-
-Phase 7.2 begins the CPU execution substrate:
-
-- bounded worker-pool lifecycle;
-- one worker group per advisory execution group or NUMA domain;
-- local queues and explicit backpressure;
-- clean start, drain, stop, and shutdown semantics;
-- optional affinity binding controlled by policy;
-- local-first scheduling with bounded cross-group work stealing;
-- no CPU reference-operation claims until typed adapters exist.
-
-### Required Files for the Phase 7.2 Chat
-
-```text
-AI_CONTEXT.md
-docs/CURRENT_STATE.md
-docs/PROJECT_TREE.md
-CMakeLists.txt
-src/backends/CMakeLists.txt
-src/backends/compute_backend.hpp
-src/backends/backend_registry.hpp
-src/backends/backend_registry.cpp
-
-src/backends/cpu/CMakeLists.txt
-src/backends/cpu/cpu_backend.hpp
-src/backends/cpu/cpu_backend.cpp
-src/backends/cpu/cpu_topology.hpp
-src/backends/cpu/cpu_topology.cpp
-src/backends/cpu/cpu_capacity.hpp
-src/backends/cpu/cpu_capacity.cpp
-src/backends/cpu/cpu_health.hpp
-src/backends/cpu/cpu_health.cpp
-src/backends/cpu/cpu_thread_pool.hpp
-src/backends/cpu/cpu_thread_pool.cpp
-
-tests/unit/backends/CMakeLists.txt
-tests/unit/backends/test_cpu_backend_registry.cpp
-tests/unit/backends/test_cpu_health_capacity.cpp
-tools/cpu_backend_probe.cpp
-```
-
-### Suggested Phase 7.2 Opening Message
-
-> We completed Prometheus Phase 7.1: node-relative CPU identity, Linux topology,
-> affinity-aware ISA capabilities, refreshable health, NUMA-aware capacity
-> groups, advisory worker-lane planning, generic CPU backend integration, and a
-> standalone diagnostic probe. CPU and CUDA register together, robot behavior
-> remains unchanged, and the legacy vision source remains authoritative. Please
-> read `AI_CONTEXT.md` and `docs/CURRENT_STATE.md` first. We are beginning Phase
-> 7.2: bounded CPU worker pools, execution-group queues, lifecycle, backpressure,
-> and NUMA-local scheduling foundations. Do not implement reference-operation or
-> SIMD execution claims before typed adapters exist.
-
-## 2026-07-15 — Integration Checkpoint I-001: CPU Execution and ARM Discovery
-
-Checkpoint I-001 reconciled the valid implementation slices from
-`agent/phase-7-2-1-cpu-thread-pool` and `agent/arm-a1-linux-auxv` onto the
-current `main` architecture. Shared CMake and documentation files were updated
-manually; neither feature branch was merged wholesale.
-
-### CPU Execution Foundation
-
-The single execution-group CPU pool now provides a fixed worker count, bounded
-queue capacity, low/normal/high/critical priorities with bounded weighted
-service, explicit queue-full backpressure, task handles and state inspection,
-completion waits, queued cancellation, exception containment, structured
-counters, drain shutdown, and cancel-pending shutdown. Execution-group and
-logical-processor metadata remain advisory and do not change affinity.
-
-Narrow hardening in this checkpoint:
-
-- worker threads retain implementation state through exit, preventing
-  worker-origin pool destruction from invalidating live worker state or leaving
-  a joinable self-thread that terminates the process;
-- cancelled queued entries are purged before capacity is evaluated for a new
-  submission;
-- weighted priority service bounds starvation without adding work stealing or
-  a new scheduler layer;
-- allocation failures while creating task controls or growing the queue return
-  an explicit `resource_exhausted` submission result;
-- restart after a completed stop is explicitly supported, with cumulative
-  counters.
-
-The SIMD selector uses explicit scalar, x86, and ARM classification rather than
-enum ordering. It clamps common hardware capability to the caller's highest
-compiled adapter, rejects cross-family and inconsistent data, returns scalar
-for unknown levels, reports fixed widths exactly, and accepts SVE/SVE2 widths
-only from 16 through 256 bytes in 16-byte increments. ARMv7 accepts NEON but
-rejects SVE and SVE2. SIMD selection remains capability metadata and does not
-prove an executable typed operation adapter.
-
-### ARM Discovery Foundation
-
-The existing ARM capability and Linux auxiliary-vector providers were retained
-and reconciled with a separate processor-identity provider. ARM discovery
-preserves AArch32/AArch64 state, Advanced SIMD, FP16, BF16, dot-product, I8MM,
-crypto, atomics, SVE/SVE2 vocabulary, explicit unknown auxiliary-vector words,
-and runtime SVE vector-length observation when available.
-
-The injectable `/proc/cpuinfo` parser records implementer, architecture,
-variant, part, and revision observations; groups observed processor signatures;
-marks heterogeneity only when multiple complete signatures exist; and reports
-missing, malformed, duplicate, and incomplete records explicitly. It remains
-observational metadata, not durable node identity, backend registration
-authority, or instruction-dispatch authority.
-
-Capability and identity providers remain separate. The diagnostic probe is the
-current higher discovery layer and composes their results using the same target
-logical processors. This is the smallest API change and avoids turning the
-existing capability query into a semantically ambiguous full-discovery query.
-ARM continues to enrich the generic CPU backend; no second CPU backend is
-registered.
-
-### Validation
-
-Validation used `build/integration-i-001-cpu-arm`, CUDA architecture 75, tests
-enabled, benchmarks disabled, legacy vision disabled, and a serial build.
-
-- configure: passed;
-- serial complete build: passed;
-- focused CPU CTest: 5/5 passed;
-- focused ARM CTest: 3/3 passed;
-- CPU thread-pool repeat: 100/100 passed;
-- complete CTest with host GPU access: 17/17 passed;
-- x86 ARM probe: reported `unsupported_architecture` / `not_arm` and exited 0;
-- `git diff --check`: passed before review.
-
-The sandboxed full-suite attempt could not access the NVIDIA driver and failed
-only the eight CUDA-dependent tests. The same unmodified suite passed 17/17
-when rerun with host GPU access.
-
-### Remaining Limits
-
-- Real ARM Linux validation has not yet been performed. AArch32, AArch64,
-  heterogeneous processors, and SVE/SVE2 hardware remain pending.
-- Running tasks are cooperative and cannot be forcefully interrupted. Drain or
-  stop can wait indefinitely for a task that never returns; timeout and
-  escalation policy remains Phase 7.2.1a work.
-- There is no NUMA pool collection, affinity binding, or work stealing.
-- There are no typed CPU or ARM operations, kernels, or production dispatch
-  adapters.
-- The CPU pool is not attached to `CpuBackend` or a production scheduler.
-- Robot behavior remains on the legacy path and was not migrated.
-
-## 2026-07-17 — RC-001/I-002 Repository Reconciliation
-
-RC-001 reconciled current public documentation, the nine completed runtime
-commits, and the existing CPU/ARM integration without squashing or rewriting
-shared history.
-
-### Integrated checkpoints
-
-- B-001: service lifecycle composition, pure backend-neutral execution policy,
-  and dynamically loaded bounded NVRTC readiness;
-- S-001: typed adaptive state, mutation validation, atomic transactions, and
-  rollback;
-- A-001: typed architecture proposals, isolated shadow validation and impact
-  analysis, and the versioned native proposal ABI;
-- I-002: ordinary merge of current `main` into `lane/runtime`, followed by a
-  validated fast-forward of `main`;
-- RC-001 documentation reconciliation: ACS-0000–0009, MEM-0000–0010, and
-  IMM-0000–0001 plus factual shared-document updates.
-
-All nine runtime commits remain reachable by their original identities. Their
-reconciliation did not add live architecture mutation, service graph
-reconfiguration, MEM persistence, ACS runtime behavior, generated CUDA
-execution, Julia embedding, or bootstrap implementation.
-
-### Validation
-
-The pre-integration `main` baseline used tests on, benchmarks off, legacy vision
-off, CUDA architectures `61;70;75`, and a serial build. It passed all 17 CTests,
-the x86 ARM not-applicable probe, strict CPU/ARM warning checks, and
-`git diff --check`.
-
-The reconciled runtime used the same configuration and serial build. It passed
-all 24 CTests with host GPU access. Service lifecycle, adaptive state,
-architecture shadow, and proposal ABI tests each passed 20 repeated runs; the
-CPU thread-pool test also passed 20 repeated runs. Strict C++ and C ABI warning
-checks passed. Existing CUDA kernels continue to emit known legacy `__shfl`
-and PTX deprecation diagnostics during compilation.
-
-### Public architecture state
-
-- ACS-0000 through ACS-0009 are Draft public architecture. The bounded public
-  ACS-I001 runtime-local contract foundation is integrated.
-- MEM-0000 through MEM-0010 are Draft public architecture. No MEM runtime or
-  persistence is implemented.
-- IMM-0000 and IMM-0001 are Draft public architecture. They contain no private
-  algorithms, thresholds, production topology, credentials, or response policy.
-- No public BOOT documents were committed on `lane/docs`; no BOOT directory or
-  bootstrap implementation was invented during reconciliation.
-
-### Historical pull requests
-
-The intended ARM work from PR #1 and the intended CPU thread-pool/SIMD work from
-PR #2 are already present through `9a0611d`. Both PRs are superseded historical
-inputs and must be closed without merging when authenticated GitHub access is
-available. Their branches must not be deleted.
-
-### Remaining limits and next approved work
-
-- Real AArch32, AArch64, heterogeneous ARM, and SVE/SVE2 hardware validation
-  remains pending.
-- `lane/cpu` retains one unique shutdown-observability commit beyond `main`.
-  Timed shutdown waiting is not implemented.
-- `lane/runtime` contains the ACS-I001 foundation and is synchronized through
-  the separately authorized ACS-R001 reconciliation.
-- `lane/docs` may continue independently authored public IMM work and future
-  public BOOT architecture.
-- No implementation work for MEM, IMM, GPU expansion, resource management, or
-  bootstrap was begun during RC-001.
-
-## 2026-07-17 — ACS-R001 Adaptive Connection Substrate Reconciliation
-
-ACS-R001 integrates the ACS-I001 public infrastructure foundation from
-`lane/runtime`. The final integrated implementation commit before documentation
-reconciliation is `edad50bae4bfaea10104815fd75802d93a1c254c`; the four original
-ACS commits remain reachable without squash or rewrite.
-
-### Integrated ACS units
-
-- ACS-01.01: bounded public identities, evidence, authority, and condition
-  vocabulary;
-- ACS-01.02: immutable descriptors and a bounded registry with deterministic
-  snapshots;
-- ACS-01.03: independent lifecycle, operational, and enforcement transitions
-  with separate revisions, bounded history, and bounded idempotency;
-- ACS-01.04: pure metadata-only admission evaluation using explicit evidence,
-  authority, execution-policy, and budget outcomes.
-
-A focused corrective commit makes registry, transition, and admission public
-outcomes exception-contained. Lifecycle updates are prepared off-record and
-all fallible history/idempotency retention completes before the live state and
-generation advance, preventing torn state under allocation failure.
-
-### Validation
-
-- clean pre-ACS `main`: 24/24 CTests passed with host GPU access;
-- integrated ACS runtime: 29/29 CTests passed with host GPU access;
-- ACS lifecycle, ACS concurrency, service lifecycle, adaptive state,
-  architecture shadow, proposal ABI, and CPU thread-pool tests: 20/20 repeated
-  runs each;
-- strict native `-Wall -Wextra -Wpedantic -Werror`: passed;
-- `git diff --check`: passed.
-
-Existing CUDA 6.1 compatibility builds continue to report known legacy shuffle
-and nvlink diagnostics. They are unchanged from the clean baseline and are not
-native ACS warnings.
-
-### Remaining limits
-
-- Real AArch64, heterogeneous ARM, and SVE/SVE2 hardware validation remains
-  pending.
-- ACS-I001 does not establish live connections and adds no transport,
-  discovery, authentication provider, resource reservation, or persistence.
-- There is no ACS C ABI, descriptor removal, durable registry/state storage,
-  networking, or service-graph reconfiguration.
-- Quarantine is an enforcement condition, not a lifecycle phase. Admission is
-  advisory and non-reserving; successful evaluation grants no application,
-  deployment, MEM, or BOOT authority.
-- No BOOT/rescue service or public BOOT document exists.
-- `lane/cpu` retains its unfinished shutdown-observability work beyond `main`;
-  timed shutdown waiting remains unimplemented.
-
-## 2026-07-18 — CPU-7.2.1A Bounded Shutdown Reconstruction
-
-CPU-7.2.1A is complete on the isolated
-`codex/cpu-7-2-1a-bounded-shutdown` branch, reconstructed from authoritative
-`lane/cpu` commit `c026d0940a687a567d056a4dd65c79c705feae5b`. The unavailable
-historical source SHA `cbf880100272ed2992236a466699a353f6d43e63` is no longer a
-required input after exhaustive recovery failed.
-
-The existing single-group CPU thread pool now provides:
-
-- a non-blocking `request_shutdown()` operation for drain or cancel-pending;
-- a monotonic drain-to-cancel policy with idempotent repeated requests;
-- a steady-clock `wait_for_shutdown()` operation with explicit full-stop,
-  timeout, invalid-timeout, worker-origin, and lifecycle results;
-- truthful draining/stopping snapshots after timeout;
-- serialized final joining only after all spawned workers exit;
-- worker-origin non-blocking requests and explicit rejection of worker-origin
-  waits;
-- restart rejection until finalization and clean restart afterward with
-  monotonic task IDs and cumulative counters;
-- compatibility for the existing blocking `drain()` and `stop()` APIs and the
-  existing worker-origin destruction contract.
-
-Only the thread-pool header, implementation, and existing thread-pool test were
-modified. Deterministic validation covers non-blocking request behavior,
-bounded timeout and later completion, queue-preserving drain, drain-to-cancel
-escalation, repeated/concurrent requesters, concurrent waiters, worker-origin
-request and wait behavior, restart boundaries, two-worker exactly-once
-contention, four-worker concurrent producer backpressure/accounting, and
-destruction safety. The existing ARMv7 SIMD fail-closed regression remains
-unchanged.
-
-Validation results:
-
-- focused strict-warning CPU build: passed;
-- focused CPU CTest: 5/5 passed;
-- CPU thread-pool repetition: 100/100 passed;
-- two-worker and four-worker stress: passed in every repeated test run;
-- concurrent producer accounting: exact in every repeated test run;
-- complete serial build: passed;
-- complete CTest: 29/29 passed;
-- focused ASan/UBSan: passed with leak detection disabled because LeakSanitizer
-  is unavailable under ptrace;
-- focused ThreadSanitizer: passed;
-- `git diff --check`: passed before the implementation commit.
-
-A sandboxed complete CTest rerun could not access the NVIDIA device and failed
-only the eight CUDA-dependent tests. The same build passed 29/29 unchanged with
-host GPU access.
-
-Running tasks are still cooperative. A permanently blocked task can prevent
-complete shutdown; finite waits report `timed_out` without changing the pool to
-stopped, forcing cancellation, or detaching workers. This checkpoint adds no
-execution-group collection, NUMA policy, affinity, work stealing, typed CPU
-kernels, automatic backend ownership, GPU/ACS/BOOT behavior, or robot changes.
-The recommended next checkpoint is CPU-7.2.2 — Execution-Group Pool
-Collection.
-## 2026-07-18 — GPU-7.1A Driver-Independent GPU Hardware Inventory
-
-GPU-7.1A introduces a bounded generic Linux PCI inventory in `src/hardware/`
-and a line-oriented `node_gpu_hardware_probe`. It compiles with an ordinary
-C++17 compiler and uses kernel-provided sysfs data without CUDA, NVML, libpci,
-udev development libraries, root privileges, networking, or external shell
-commands. The CMake entry point now enables CUDA targets only when requested
-and a CUDA compiler is actually available; generic hardware, CPU, runtime, and
-ACS targets remain buildable when CUDA is disabled or absent.
-
-The inventory reports checked PCI addresses, raw vendor/device/subsystem/class
-and optional revision values, PCI-class-derived device categories, convenience
-vendor families, and observable driver binding. It filters on relevant PCI
-classes rather than vendor identity, so an NVIDIA non-display device is not
-reported as a GPU-like device. A missing driver link means unbound; an unsafe
-or failed link observation remains unknown with a bounded issue. CUDA readiness
-is deliberately absent from the record.
-
-Configurable and absolute bounds cover scanned entries, retained devices,
-paths, identifiers, driver names, retained issues, and file reads. Results
-distinguish success, partial observation, unsupported platforms, unavailable
-roots, permission failures, malformed entries, resource exhaustion, I/O
-failure, and invalid options. Synthetic roots make every driverless fixture
-deterministic and independent of host hardware.
-
-Validation used tests on, benchmarks off, legacy vision off, and serial builds:
-
-- no-CUDA strict C++ build: 22/22 CTests passed;
-- synthetic PCI fixture: 100/100 consecutive runs passed;
-- standalone generic probe: success, 52 PCI entries scanned, two matching
-  devices, zero issues, and CUDA explicitly not evaluated;
-- CUDA 12.4 build for architectures `61;70;75`: 30/30 CTests passed with host
-  GPU access;
-- existing CUDA capability probe: passed for two Quadro RTX 4000 devices,
-  compute capability 7.5;
-- existing CUDA runtime-resource probe: passed;
-- strict native warnings: passed; existing CUDA shuffle/PTX and nvlink
-  diagnostics remain pre-existing and outside this checkpoint.
-
-The generic probe observed NVIDIA devices `10de:1eb1` at `0000:2d:00.0` and
-`0000:2e:00.0`, both class `0x030000` and bound to `nvidia`. This establishes
-only PCI hardware and driver-binding observations. It does not establish CUDA
-installation policy, health, backend admission, scheduler eligibility, or
-automatic package action.
-
-Known limitations are Linux sysfs scope, broad PCI-class classification without
-a marketing-name database, no IOMMU-group or topology model, and no correlation
-with CUDA runtime identities. The recommended next checkpoint is GPU-7.1B: a
-bounded evidence-correlation model that preserves independent hardware,
-driver, API, runtime, compatibility, and admission states.
-
-## 2026-07-18 — GPU-7.1B Bounded GPU Evidence Correlation
-
-GPU-7.1B starts at the exact GPU-7.1A commit
-`3561b12b3b2f292977253c77febe13e0c8d13167`. The always-build
-`prometheus_gpu_evidence_correlation` library is ordinary C++17 and consumes
-only bounded observed values. The conditional CUDA adapter reuses the existing
-software-version, device-discovery, device-pool, capability, health, and
-execution-report vocabulary without reimplementing discovery or backend
-policy.
-
-The result preserves separate summaries and states for:
-
-- complete, partial, unavailable, failed, or unevaluated physical inventory;
-- bound, unbound, or unknown per-device kernel driver and bounded driver name;
-- compile-time toolkit, runtime query, driver query, and driver/runtime support;
-- CUDA enumeration attempt/result, reported and retained counts, stable
-  identities, capabilities, and registration-ready counts;
-- exact, uniquely inferred, hardware-only, runtime-only, ambiguous, invalid,
-  unavailable, or unevaluated PCI correlation;
-- project architecture, compile-time release, runtime release, binary image,
-  and kernel-registry coverage;
-- backend registration, runtime binding, execution readiness, and admission.
-
-An exact correlation requires equal domain, bus, device, and function. A CUDA
-PCI identity without a domain can be inferred from bus/device/function only
-when one hardware candidate exists; domain zero is never assumed. Stable UUID
-or persistent key order precedes runtime ordinal. Multiple stable CUDA logical
-identities may associate with one physical function. Duplicate or ambiguous
-identities remain conflicts rather than selecting a first record.
-
-All hardware inputs, CUDA inputs, hardware records, per-hardware associations,
-runtime-only records, issues, stable identities, and diagnostic identities have
-configurable and absolute bounds. Construction and ordering complete before a
-complete result is published. Inputs remain immutable, and oversized identity
-text is neither truncated nor copied into the bounded result.
-
-Validation results:
-
-- strict CUDA-disabled build: 23/23 CTests passed;
-- pure A–T fixture: 100/100 repeated runs passed, with 36 deterministic input
-  permutations evaluated in every run;
-- pure test and driverless probe dependency inspection: no CUDA library;
-- CUDA 12.4 serial build for `61;70;75`: 32/32 CTests passed with host access;
-- existing CUDA capability probe: two Quadro RTX 4000 devices, compute 7.5;
-- existing CUDA runtime-resource probe: passed;
-- new evidence probe, full visibility: two hardware records, two CUDA devices,
-  two exact matches, no inferred/runtime-only/ambiguous records;
-- `CUDA_VISIBLE_DEVICES=`: two hardware-only records, zero CUDA-visible devices;
-- `CUDA_VISIBLE_DEVICES=0`: one exact match and one hardware-only record;
-- strict native warnings and `git diff --check`: passed. Existing CUDA shuffle,
-  PTX, and nvlink diagnostics remain pre-existing.
-
-The host exact matches were `0000:2d:00.0` to
-`GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b` and `0000:2e:00.0` to
-`GPU-4ced1003-8696-6957-d524-1539252d8c8d`. Both physical records retained the
-observed `nvidia` driver. These facts do not grant execution or admission.
-Kernel coverage and execution remained `not_evaluated`, binary image remained
-unknown, and Node admission remained `not_evaluated`.
-
-No installation, driver loading, package access, kernel launch, memory
-allocation, topology scheduling, MIG management, ACS admission, or private
-deployment policy was added. The recommended next checkpoint is a separately
-authorized GPU-7.1C installer-evidence layer for bounded driver/runtime library
-and package observations without installation or readiness inference.
-
-## 2026-07-18 — GPU-7.2A Device-Local Execution Worker
-
-GPU-7.2A is based exactly on `lane/gpu` commit
-`fef4e2d8803cf38935e59e217fc5e7cec349e89a` and uses only
-`tmp/gpu-7-2a-execution-worker`. It introduces the first governed CUDA
-execution path without changing `CudaBackend` into a scheduler or altering the
-GPU-7.1A/GPU-7.1B inventory and correlation semantics.
-
-The CUDA-conditional implementation consists of:
-
-- `cuda_kernel_adapter.*`: typed adapter lifecycle and bounded device-local
-  actual-adapter registry, separate from kernel metadata;
-- `cuda_device_worker.*`: one durable device key, copied pool evidence,
-  borrowed shared queue and metadata registry, one worker thread, one
-  non-blocking stream, one timing-disabled completion event, bounded issues,
-  terminal waits, and lifecycle snapshots;
-- `probe.synthetic.execute.fp32`: an actual eight-element FP32 ReLU adapter
-  using the existing activation kernel on the worker-owned stream;
-- `test_cuda_device_worker.cpp`: adapter, lifecycle, failure, queue, restart,
-  visibility-supporting, and two-device tests;
-- `cuda_device_worker_probe.cpp`: bounded multi-device execution diagnostics.
-
-Worker startup validates the UUID-based persistent key against the supplied
-pool snapshot, requires registration readiness and a matched runtime binding,
-and captures the current ordinal only after durable-key resolution. The worker
-thread performs `cudaSetDevice` before stream, event, or adapter creation.
-Metadata reporting `adapter_available` does not prove an actual adapter exists;
-the worker separately requires exact metadata compatibility and exact lookup of
-an initialized adapter instance.
-
-Accepted work follows `queued → claimed → running → completed` only after
-event synchronization and typed output validation. The claim token returned by
-`claim_next` is retained for `mark_running`, `complete`, or `fail`. Missing
-actual adapters, invalid metadata binding, controlled launch failures, and
-validation mismatches produce job failure without false completion. Device
-selection, stream/event creation, adapter initialization, unrecoverable CUDA
-completion, and queue-terminal transition failures fail the worker.
-
-The wrapper submission path rejects another device key or an inactive worker,
-uses the existing queue validation, and notifies only after success. A pending
-notification predicate accompanies the saturating generation counter. Queue
-inspection and condition-variable wait entry share the worker mutex, so a
-successful wrapper submission cannot be lost between inspection and sleep.
-Production execution uses no polling sleep.
-
-Stop first disables submissions, then prevents another claim. A claim already
-owned by the worker reaches a truthful terminal state; unclaimed shared-queue
-jobs remain queued and are not silently cancelled. Adapter resources, event,
-and stream are destroyed by the device thread before it exits, and callers
-join rather than detach. A normally stopped worker may restart after complete
-cleanup. The durable key is unchanged, the ordinal is re-resolved from the
-supplied pool evidence, no current job is retained, and counters are cumulative.
-
-Validation results:
-
-- strict CUDA-disabled serial build: 23/23 CTests passed;
-- CUDA 12.4 serial build for `61;70;75`: 33/33 CTests passed with host access;
-- focused worker suite: 100/100 consecutive host-backed runs passed;
-- full visibility: two workers, 16 submitted, 16 completed, zero failed;
-- device `cuda:GPU-888ada1c-55ed-66cd-69ce-f0719ceedc4b`: eight jobs on
-  ordinal snapshot 0;
-- device `cuda:GPU-4ced1003-8696-6957-d524-1539252d8c8d`: eight jobs on
-  ordinal snapshot 1;
-- `CUDA_VISIBLE_DEVICES=0`: retained durable UUID, ordinal snapshot 0, 8/8
-  completed;
-- `CUDA_VISIBLE_DEVICES=`: truthful `no_devices`, no worker created, no crash;
-- existing capability and runtime-resource probes: passed;
-- NVIDIA Compute Sanitizer memcheck: zero errors for the two-device probe;
-- strict native warnings: passed; pre-existing CUDA shuffle/PTX and nvlink
-  warnings remain outside this checkpoint;
-- every probe worker joined with stream, event, and adapter cleanup reported.
-
-Known limitations are one stream and one job at a time per explicitly created
-worker, fixed synthetic payload only, no general memory-lease interpretation,
-and no bounded stop timeout for a CUDA operation that never completes. There
-is no automatic retry, migration, cross-device work stealing, memory-pool
-integration, scheduler, generated-code execution, MIG control, ACS admission,
-or private deployment policy. The temporary branch must be fast-forwarded and
-deleted by the operator after review. The recommended next checkpoint is
-GPU-7.2B — Bounded Execution Payload and Memory-Lease Resolution.
+`assembly/p01_boot/` builds candidate kernel/initramfs artifacts and, when the
+required host tooling is available, an x86_64 GRUB hybrid ISO. It contains
+inspection and direct/ISO QEMU validation paths. Missing GRUB, xorriso, or OVMF
+support is reported as unavailable rather than passed.
+
+The selected kernel source is external and pinned by the P01 tooling. Nothing
+in the current public path installs to a host, writes removable media, changes
+EFI variables, or grants an artifact production authority.
+
+## Current micro-OS state
+
+`assembly/micro_os/` contains the permanent P01 PID 1 foundation. It:
+
+- mounts devtmpfs, procfs, sysfs, `/run`, and a bounded result tmpfs;
+- parses only bounded `node.micro_os.*` options;
+- validates the exact tracked startup manifest before launching services;
+- uses deterministic stages, explicit dependencies, bounded concurrency,
+  deadlines, restart limits, process groups, `signalfd`, and complete reaping;
+- supervises exact executables under `/node/services/` without shell or `PATH`
+  discovery;
+- emits human-readable and JSONL evidence to console/serial channels.
+
+The included services are conformance probes. They are not production CPU,
+GPU, ACS, network, or application providers.
+
+## Current assembly state
+
+`assembly/ram_assembly_p0/` is a bounded tmpfs-only mechanism proof. It can
+select an exact external kernel revision, resolve tracked configuration
+fragments, build candidate kernel/initramfs outputs, validate records, and
+prepare explicit kexec boundaries. It does not establish BOOT acceptance,
+generation membership, installation, activation, recovery, or runtime
+readiness.
+
+The public external-component ABI and parser are in `interfaces/` and
+`assembly/providers/`. A declaration may be absent or structurally validated;
+neither outcome launches a component or grants trust, acceptance, authority, or
+readiness. Public-only assembly remains a complete supported case.
+
+## Current CPU backend state
+
+The generic CPU backend provides:
+
+- node-relative identity and Linux topology observations;
+- configured, online, and process-allowed CPU accounting;
+- x86 and ARM capability evidence with explicit partial/unknown states;
+- utilization, frequency, load, memory, pressure, and thermal observations;
+- health and capacity summaries plus advisory execution groups;
+- a bounded priority worker pool with backpressure, task handles,
+  cancellation, counters, restart, exception containment, and bounded shutdown
+  waiting;
+- conservative scalar/x86/ARM SIMD selection.
+
+ARM auxiliary-vector and `/proc/cpuinfo` parsing enrich this backend. No second
+ARM backend is registered. CPU affinity, NUMA execution-group pool collection,
+cross-group work stealing, typed CPU kernels, and production CPU dispatch are
+not implemented.
+
+## Current GPU backend state
+
+The generic Linux PCI inventory observes GPU-like hardware and driver binding
+without CUDA. The evidence-correlation layer keeps physical hardware, kernel
+driver, compiler/toolkit, runtime, CUDA-visible identity, binary coverage,
+backend readiness, and admission separate.
+
+The CUDA path includes stable UUID identity, capability/health observation,
+device pooling, metadata-first kernel registration, bounded queues, typed
+adapter registration, and a device-local worker. The worker currently proves a
+small synthetic FP32 path and owns its stream/event/adapter cleanup on the
+device thread.
+
+This is not a production scheduler. General payload/memory-lease resolution,
+automatic retry or migration, cross-device work stealing, production model
+memory, MIG control, and broad neural execution are absent. CUDA remains
+optional and an empty visible-device set is valid.
+
+## Current hardware discovery state
+
+Discovery is bounded and observational. Stable CPU/GPU identities are distinct
+from logical CPU numbers and CUDA ordinals. Linux PCI evidence distinguishes
+unbound, bound, and unknown driver states; CUDA evidence independently reports
+runtime visibility and compatibility. Presence never implies readiness or
+admission.
+
+The repository contains early Hailo discovery/backend material, but HailoRT
+loading and model execution are not established. IMX500, AMD GPU, Xeon Phi,
+and other accelerator paths remain incomplete or placeholder-level.
+
+## Current ACS state
+
+`src/core/acs/` implements the ACS-I001 public runtime-local foundation:
+
+- bounded identities, evidence, authority, and condition vocabulary;
+- immutable descriptors and deterministic bounded registry snapshots;
+- separately versioned lifecycle, operational, and enforcement transitions;
+- bounded transition history and idempotency handling;
+- pure metadata-only, non-reserving admission evaluation.
+
+The public Draft ACS-0000 through ACS-0009 specifications are retained under
+`docs/architecture/acs/`. Live connections, transport, network discovery,
+authentication providers, resource reservation, persistence, descriptor
+removal, and a public ACS C ABI are not implemented.
+
+## Current kernel relationship
+
+Linux kernel source and acceptance remain external to this repository. Node
+records the selected source/revision/configuration and treats produced images as
+candidates until the owning authority accepts them. The first P01 profile uses
+tracked common, x86_64, and Dell Wyse 5070 configuration fragments; it is not a
+universal hardware profile.
+
+## Current testing and validation state
+
+The repository contains CMake/CTest coverage for CPU, ARM, CUDA, hardware,
+runtime, ACS, and assembly components plus P0/P01-specific validation tooling.
+Earlier checkpoints recorded passing CPU-only, CUDA-enabled, repeated stress,
+strict-warning, sanitizer, and QEMU runs on their documented hosts.
+
+No build, test, benchmark, or QEMU boot was run during this repository
+normalization. Current-machine validation is therefore `not run`; earlier
+records should be treated as historical evidence only. `build/` was removed as
+disposable generated state and will be recreated by future build tooling.
+
+## Current development environment
+
+The primary workflow is Linux-hosted and headless-friendly. CMake drives host
+components, named directories beneath `build/` contain generated state, and
+QEMU is the intended pre-hardware boot environment. Serial output is the
+primary boot diagnostic surface. Docker is not required for normal development.
+
+`main` is stable/public, `dev` is active integration, and specialized lanes own
+subsystem work before integration. See `AGENTS.md` for branch rules.
+
+## Known incomplete areas
+
+- production Node service graph and runtime activation;
+- migration of production robot behavior out of the legacy CUDA program;
+- CPU affinity/NUMA orchestration and typed CPU kernel execution;
+- general GPU payload and memory-lease execution;
+- HailoRT, IMX500, AMD GPU, and Xeon Phi production backends;
+- live ACS transport, discovery, authentication, persistence, and reservation;
+- MEM persistence and IMM implementation;
+- production BOOT acceptance, installation, recovery, and media workflows;
+- real-hardware coverage across supported ARM and heterogeneous targets;
+- externally selected project license.
+
+## Next major development direction
+
+The next implementation milestone must be authorized independently. The
+current boundaries point toward deeper bounded CPU/GPU execution, live but
+governed ACS integration, and promotion of the P01 candidate path into a
+defined BOOT acceptance model. None should bypass explicit evidence, ownership,
+authority, CPU-only support, or public/private separation.

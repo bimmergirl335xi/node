@@ -1,66 +1,151 @@
 # Node
 
-Node is a portable, headless runtime foundation for a distributed embodied
-cognitive system. The current repository keeps production robot behavior on
-the legacy path while building typed, bounded infrastructure for future
-services and heterogeneous compute.
+Node is a portable, headless operating environment for heterogeneous machines
+participating in a distributed embodied-cognition system. The repository
+combines a Linux-based boot path, a minimal C micro-OS, a developing runtime,
+hardware backends, public assembly mechanisms, and public architecture
+contracts.
 
-## Integrated foundations
+The project is pre-production. Its foundations are implemented in useful,
+testable slices, but Node is not yet a complete production runtime and does not
+replace the legacy robot loop.
 
-- CUDA kernel and backend foundations for explicit Pascal, Volta, and Turing
-  targets, stable device identity, health, capacity, registry metadata, and
-  dynamically loaded NVRTC readiness;
-- a generic CPU backend with topology, capability, health, capacity, a bounded
-  priority worker pool, explicit backpressure, and conservative SIMD
-  selection;
-- ARM capability enrichment through Linux auxiliary-vector observation and
-  injectable processor-identity parsing, without registering a second CPU
-  backend;
-- service lifecycle composition with callbacks outside the manager lock and a
-  borrowed backend registry in service context;
-- pure backend-neutral execution-policy evaluation;
-- typed adaptive-state descriptors, validation, atomic transactions, and
-  rollback;
-- typed architecture proposals, isolated shadow validation, impact evidence,
-  and a bounded versioned C ABI for future proposal producers;
-- public ACS contracts with bounded identities, immutable descriptors,
-  deterministic registries, independently versioned lifecycle, operational,
-  and enforcement state, and pure non-reserving admission evaluation.
+## Maturity at a glance
 
-These foundations do not activate production execution, mutate live
-architecture, establish live connections, reserve resources, promote generated
-code, or replace the legacy robot loop.
+### Implemented
 
-## Public architecture specifications
+- generic CPU discovery, health/capacity reporting, bounded worker execution,
+  and conservative SIMD selection;
+- CUDA discovery, capability/health reporting, kernel metadata, bounded job
+  queues, evidence correlation, and a device-local execution worker;
+- Linux PCI GPU inventory that works without CUDA;
+- service lifecycle, adaptive-state, architecture-shadow, and proposal-ABI
+  foundations;
+- bounded public ACS descriptors, registry, lifecycle state, and pure admission
+  evaluation;
+- a static C11 PID 1 micro-OS and P01 candidate-image tooling;
+- a RAM-only assembly mechanism proof and a public external-component ABI.
 
-- `docs/architecture/acs/` contains ACS-0000 through ACS-0009 as public Draft
-  communication architecture.
-- `docs/architecture/memory/` contains MEM-0000 through MEM-0010 as public
-  Draft memory architecture. No MEM persistence implementation is present.
-- `docs/architecture/immune/` contains IMM-0000 and IMM-0001 as public Draft
-  immune architecture. No private detection logic or IMM implementation is
-  present.
-- Public BOOT documents are not yet committed. Bootstrap implementation remains
-  reserved for `lane/bootstrap`.
+### Validated in earlier development checkpoints
 
-## Build and test
+Focused CPU, CUDA, runtime, ACS, assembly, and P01 tests have recorded passing
+results on their documented hosts. Those records are historical evidence, not
+a guarantee for every checkout or machine. See [Current State](docs/CURRENT_STATE.md)
+for the present baseline and validation caveats.
 
-Use a named build directory. On memory-constrained hosts, build serially:
+### Experimental
 
-```bash
+- the P01 bootable x86_64 GRUB hybrid ISO path;
+- external-component declaration and assembly-provider boundaries;
+- public ACS, memory, and immune architecture specifications;
+- accelerator stubs and the legacy CUDA robot program.
+
+### Planned or incomplete
+
+Production scheduling, general CPU/GPU kernel dispatch, live ACS connections,
+ACS transport and persistence, MEM persistence, IMM implementation, production
+assembly authority, installation/recovery, and migration away from the legacy
+robot loop are not complete.
+
+## Boot and runtime architecture
+
+The intended public path is:
+
+```text
+Linux kernel
+    -> Node micro-OS (PID 1)
+    -> public Node runtime substrate
+    -> public ACS substrate
+    -> optional externally supplied components
+```
+
+Linux remains responsible for mature kernel facilities and drivers unless a
+specific ownership contract says otherwise. The permanent P01 micro-OS mounts
+bounded volatile filesystems, validates a fixed startup manifest, launches
+public proof services, supervises them to terminal states, and emits serial and
+structured evidence. It does not by itself accept an assembly generation,
+install a system, activate production services, or prove normal-runtime
+readiness.
+
+## CPU and GPU model
+
+CPU-only operation is a supported state. ARM observations enrich the generic
+CPU backend rather than creating a second backend for the same processor.
+Affinity, NUMA pool orchestration, typed CPU kernels, and production CPU
+dispatch remain incomplete.
+
+GPU discovery separates physical hardware, kernel-driver binding, runtime
+visibility, binary compatibility, backend readiness, and admission. PCI
+visibility is not CUDA readiness. CUDA is optional at configuration time, GPU
+absence is valid, and no public path automatically installs drivers or grants a
+device production authority.
+
+## ACS direction
+
+The Adaptive Connection Substrate (ACS) is intended to describe governed,
+bounded relationships between nodes, services, hardware, and cognitive
+structures without equating a relationship with a socket or transport.
+`src/core/acs/` contains the current public runtime-local foundation, while
+`docs/architecture/acs/` contains the public Draft specification series.
+Private deployment policy and proprietary ACS implementation do not belong in
+this repository.
+
+## Repository map
+
+- `assembly/` — micro-OS, P01 boot tooling, RAM-only proof, profiles, and
+  public providers;
+- `src/` — runtime, hardware discovery, and CPU/CUDA/accelerator backends;
+- `interfaces/` — public C-compatible interfaces;
+- `tests/` and `benchmarks/` — test and benchmark sources;
+- `docs/architecture/` — public ACS, memory, and immune specifications;
+- `docs/CURRENT_STATE.md` — current integrated implementation snapshot;
+- `docs/PROJECT_TREE.md` — task-oriented navigation map;
+- `tools/`, `scripts/`, and `python/` — developer utilities;
+- `legacy/` — production robot behavior retained during migration;
+- `build/` — ignored, generated, disposable output.
+
+## Branch model
+
+`main` is the stable/public branch. `dev` is the active integration branch and
+may temporarily be incomplete. Subsystem work normally moves from a specialized
+lane (`lane/cpu`, `lane/gpu`, `lane/apu`, `lane/phi`, `lane/runtime`, or
+`lane/docs`) into `dev`, is integrated and validated there, and only then moves
+to `main`. `lane/tmp` is preservation/quarantine only.
+
+## Development workflow
+
+Read `AGENTS.md`, `docs/PROJECT_TREE.md`, and `docs/CURRENT_STATE.md` before
+changing code. Work in the owning subsystem, keep CPU-only paths independent of
+CUDA, add focused tests for changed behavior, and keep generated output under a
+named `build/` directory.
+
+The host build remains CMake-based and transitional. A CPU-only configuration
+can be requested explicitly:
+
+```sh
 cmake -S . -B build/local \
+  -DPROMETHEUS_ENABLE_CUDA=OFF \
   -DPROMETHEUS_BUILD_TESTS=ON \
   -DPROMETHEUS_BUILD_BENCHMARKS=OFF \
-  -DPROMETHEUS_BUILD_LEGACY_VISION=OFF \
-  '-DPROMETHEUS_CUDA_ARCHITECTURES=61;70;75'
-
+  -DPROMETHEUS_BUILD_LEGACY_VISION=OFF
 cmake --build build/local --parallel 1
 ctest --test-dir build/local --output-on-failure
 ```
 
-CUDA tests require a compatible host driver and GPU. ARM discovery tests use
-injectable evidence on non-ARM hosts; validation on real AArch32, AArch64, and
-SVE/SVE2 systems remains separate.
+CUDA builds require a compatible compiler, toolkit, driver, GPU, and explicitly
+selected architecture list. The current P01 image workflow is documented in
+`assembly/p01_boot/README.md`; it requires an exact external Linux-kernel
+checkout and may report ISO/firmware validation as unavailable when host tools
+are missing. QEMU validates the actual boot path. Docker is not required for
+the normal development loop.
 
-Read `AI_CONTEXT.md` before architecture changes and
-`docs/CURRENT_STATE.md` for the integrated checkpoint record.
+## Documentation
+
+- [Agent instructions](AGENTS.md)
+- [Current integrated state](docs/CURRENT_STATE.md)
+- [Repository navigation](docs/PROJECT_TREE.md)
+- [Durable technical context](AI_CONTEXT.md)
+- [Assembly environment](assembly/README.md)
+- [ACS specifications](docs/architecture/acs/README.md)
+- [Memory specifications](docs/architecture/memory/README.md)
+- [Immune specifications](docs/architecture/immune/README.md)
