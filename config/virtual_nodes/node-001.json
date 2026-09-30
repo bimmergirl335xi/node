@@ -1,0 +1,8 @@
+{
+  "node_id": "node-001",
+  "firmware": "bios",
+  "vcpus": 1,
+  "memory_mb": 512,
+  "debug_enabled": false,
+  "gdb_port": 1234
+}

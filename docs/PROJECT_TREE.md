@@ -100,7 +100,8 @@ Historical handoffs are evidence, not current authority.
 
 - general tools and probes: `tools/`
 - shell helpers: `scripts/`
-- Python utilities: `python/`
+- Python utilities and the bounded local VM controller: `python/`
+- managed development-instance profiles: `config/virtual_nodes/`
 - simulation code: `simulator/`
 - test fixtures and failure scenarios: `tests/fixtures/`, `tests/failure/`
 

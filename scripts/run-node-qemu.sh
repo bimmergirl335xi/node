@@ -4,14 +4,19 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 REPO_ROOT=$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)
 ISO_PATH="${REPO_ROOT}/build/artifacts/node-current.iso"
-LOG_DIR="${REPO_ROOT}/build/logs"
+BUILD_ROOT="${REPO_ROOT}/build"
+LOG_DIR_INPUT=${NODE_QEMU_LOG_DIR:-${BUILD_ROOT}/logs}
+LOG_DIR=$(realpath -m -- "${LOG_DIR_INPUT}")
 LOG_PATH="${LOG_DIR}/qemu-last-run.log"
 EVENT_LOG_PATH="${LOG_DIR}/qemu-boot-events.jsonl"
-TEMP_DIR="${REPO_ROOT}/build/temp"
+TEMP_DIR="${BUILD_ROOT}/temp"
 QEMU_BIN=${NODE_QEMU_BIN:-qemu-system-x86_64}
 TIMEOUT_SECONDS=${NODE_QEMU_TIMEOUT_SECONDS:-90}
 DEBUG_MODE=${NODE_QEMU_DEBUG_MODE:-0}
 GDB_PORT=${NODE_QEMU_GDB_PORT:-1234}
+NODE_ID=${NODE_QEMU_NODE_ID:-}
+VCPUS=${NODE_QEMU_VCPUS:-1}
+MEMORY_MB=${NODE_QEMU_MEMORY_MB:-512}
 FIRMWARE=bios
 MAX_EVENT_COUNT=256
 MAX_EVENT_BYTES=262144
@@ -33,6 +38,9 @@ Environment:
   NODE_QEMU_TIMEOUT_SECONDS  bounded run timeout from 1 through 600 (default: 90)
   NODE_QEMU_OVMF_CODE        optional OVMF code image override for --uefi
   NODE_QEMU_OVMF_VARS        optional OVMF variable template override for --uefi
+
+The managed-node controller also supplies bounded internal environment values
+for its per-node log directory, process identity, vCPU count, and memory size.
 
 Outputs:
   build/logs/qemu-last-run.log
@@ -65,6 +73,17 @@ done
     fail 'NODE_QEMU_TIMEOUT_SECONDS must be an integer from 1 through 600'
 [[ ${DEBUG_MODE} == 0 || ${DEBUG_MODE} == 1 ]] ||
     fail 'NODE_QEMU_DEBUG_MODE must be 0 or 1'
+[[ ${VCPUS} =~ ^[1-9][0-9]?$ ]] && (( VCPUS <= 16 )) ||
+    fail 'NODE_QEMU_VCPUS must be an integer from 1 through 16'
+[[ ${MEMORY_MB} =~ ^[1-9][0-9]{2,4}$ ]] &&
+    (( MEMORY_MB >= 128 && MEMORY_MB <= 8192 )) ||
+    fail 'NODE_QEMU_MEMORY_MB must be an integer from 128 through 8192'
+[[ -z ${NODE_ID} || ${NODE_ID} =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] ||
+    fail 'NODE_QEMU_NODE_ID must be a lowercase identifier of at most 32 characters'
+case "${LOG_DIR}" in
+    "${BUILD_ROOT}"/*) ;;
+    *) fail 'NODE_QEMU_LOG_DIR must resolve beneath the repository build directory' ;;
+esac
 if [[ ${DEBUG_MODE} == 1 ]]; then
     [[ ${GDB_PORT} =~ ^[0-9]{4,5}$ ]] &&
         (( GDB_PORT >= 1024 && GDB_PORT <= 65535 )) ||
@@ -93,8 +112,8 @@ qemu_command=(
     -no-user-config
     -machine accel=tcg
     -cpu max
-    -smp 1
-    -m 512M
+    -smp "${VCPUS}"
+    -m "${MEMORY_MB}M"
     -cdrom "${ISO_PATH}"
     -boot order=d
     -nic none
@@ -103,6 +122,12 @@ qemu_command=(
     -monitor none
     -no-reboot
 )
+
+if [[ -n ${NODE_ID} ]]; then
+    qemu_command+=(
+        -name "guest=${NODE_ID},process=${NODE_ID}"
+    )
+fi
 
 if [[ ${DEBUG_MODE} == 1 ]]; then
     qemu_command+=(
@@ -151,6 +176,11 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'started_utc: %s\n' "${started_at}"
     printf 'firmware: %s\n' "${FIRMWARE}"
     printf 'iso: %s\n' "${ISO_PATH}"
+    printf 'vcpus: %s\n' "${VCPUS}"
+    printf 'memory_mb: %s\n' "${MEMORY_MB}"
+    if [[ -n ${NODE_ID} ]]; then
+        printf 'managed_node_id: %s\n' "${NODE_ID}"
+    fi
     printf 'timeout_seconds: %s\n' "${TIMEOUT_SECONDS}"
     if [[ ${DEBUG_MODE} == 1 ]]; then
         printf 'debug_mode: paused_gdb\n'

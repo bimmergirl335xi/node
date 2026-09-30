@@ -168,6 +168,29 @@ extension with `build/artifacts/vmlinux` as the program and
 `127.0.0.1:1234` as the remote target, then continue execution from the
 debugger UI; no workspace configuration is required or tracked.
 
+The first managed development instance is declared by
+`config/virtual_nodes/node-001.json`. A bounded Python standard-library
+controller wraps the same launchers without replacing their boot contract:
+
+```sh
+./python/node_lab.py list
+./python/node_lab.py status node-001
+./python/node_lab.py start node-001
+./python/node_lab.py events node-001
+./python/node_lab.py serial node-001
+./python/node_lab.py stop node-001
+```
+
+`restart` and `debug-info` are also available, and `start node-001 --debug`
+reuses the paused DEV-001D workflow. Generated PID/state records and per-node
+serial/event logs live only beneath `build/virtual/node-001/`. Before stopping
+an instance, the controller verifies the recorded PID, Linux process-start
+identity, managed QEMU marker, canonical ISO argument, and no-network
+configuration. This is a disposable single-VM development convenience: it
+does not claim guest health, create storage, add networking, or implement a
+multi-node control plane. The direct build, normal QEMU, and debug launchers
+remain independently usable.
+
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:
 
