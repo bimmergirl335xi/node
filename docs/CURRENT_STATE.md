@@ -172,7 +172,11 @@ headless TCG guest. It defaults to BIOS and optionally uses OVMF with a
 disposable variable-store copy for UEFI. The guest has one vCPU, 512 MiB of
 memory, serial stdio, no network interface, no virtual disk, and no persistent
 VM state. The latest timestamped command, boot transcript, and exit status are
-stored under `build/logs/qemu-last-run.log`.
+stored under `build/logs/qemu-last-run.log`. The launcher preserves the full
+serial transcript and separately captures the micro-OS's existing bounded
+JSON records at `build/logs/qemu-boot-events.jsonl`. Capture is limited to 256
+events and 256 KiB; it observes the established P01 lifecycle without adding
+new PID 1, runtime, or acceptance behavior.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.

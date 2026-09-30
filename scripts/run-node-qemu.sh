@@ -6,10 +6,13 @@ REPO_ROOT=$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)
 ISO_PATH="${REPO_ROOT}/build/artifacts/node-current.iso"
 LOG_DIR="${REPO_ROOT}/build/logs"
 LOG_PATH="${LOG_DIR}/qemu-last-run.log"
+EVENT_LOG_PATH="${LOG_DIR}/qemu-boot-events.jsonl"
 TEMP_DIR="${REPO_ROOT}/build/temp"
 QEMU_BIN=${NODE_QEMU_BIN:-qemu-system-x86_64}
 TIMEOUT_SECONDS=${NODE_QEMU_TIMEOUT_SECONDS:-90}
 FIRMWARE=bios
+MAX_EVENT_COUNT=256
+MAX_EVENT_BYTES=262144
 
 fail() {
     echo "Node QEMU error: $*" >&2
@@ -28,6 +31,10 @@ Environment:
   NODE_QEMU_TIMEOUT_SECONDS  bounded run timeout from 1 through 600 (default: 90)
   NODE_QEMU_OVMF_CODE        optional OVMF code image override for --uefi
   NODE_QEMU_OVMF_VARS        optional OVMF variable template override for --uefi
+
+Outputs:
+  build/logs/qemu-last-run.log
+  build/logs/qemu-boot-events.jsonl
 EOF
 }
 
@@ -61,6 +68,17 @@ command -v "${QEMU_BIN}" >/dev/null 2>&1 ||
 
 mkdir -p -- "${LOG_DIR}" "${TEMP_DIR}"
 
+uefi_vars_copy=''
+event_staging=''
+cleanup() {
+    [[ -z ${uefi_vars_copy} ]] || rm -f -- "${uefi_vars_copy}"
+    [[ -z ${event_staging} ]] || rm -f -- "${event_staging}"
+}
+trap cleanup EXIT
+
+event_staging=$(mktemp "${TEMP_DIR}/qemu-boot-events.XXXXXX.jsonl")
+rm -f -- "${EVENT_LOG_PATH}"
+
 qemu_command=(
     "${QEMU_BIN}"
     -no-user-config
@@ -77,7 +95,6 @@ qemu_command=(
     -no-reboot
 )
 
-uefi_vars_copy=''
 if [[ ${FIRMWARE} == uefi ]]; then
     ovmf_code=${NODE_QEMU_OVMF_CODE:-}
     ovmf_vars=${NODE_QEMU_OVMF_VARS:-}
@@ -104,7 +121,6 @@ EOF
         fail 'matching OVMF code and variable-template files were not found'
 
     uefi_vars_copy=$(mktemp "${TEMP_DIR}/qemu-uefi-vars.XXXXXX.fd")
-    trap 'rm -f -- "${uefi_vars_copy}"' EXIT
     cp -- "${ovmf_vars}" "${uefi_vars_copy}"
     chmod u+w -- "${uefi_vars_copy}"
     qemu_command+=(
@@ -138,8 +154,52 @@ finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'qemu_exit_status: %s\n' "${qemu_status}"
 } | tee -a "${LOG_PATH}"
 
+event_capture_status=0
+if LC_ALL=C awk \
+    -v max_count="${MAX_EVENT_COUNT}" \
+    -v max_bytes="${MAX_EVENT_BYTES}" '
+    BEGIN { status = 0 }
+    {
+        sub(/\r$/, "")
+    }
+    /^\{"record":"[A-Za-z0-9_]+"/ && /\}$/ {
+        count++
+        bytes += length($0) + 1
+        if (count > max_count || bytes > max_bytes) {
+            status = 2
+            exit
+        }
+        print
+    }
+    END {
+        if (status != 0) exit status
+        if (count == 0) exit 3
+    }
+' "${LOG_PATH}" > "${event_staging}"; then
+    chmod 0644 -- "${event_staging}"
+    mv -f -- "${event_staging}" "${EVENT_LOG_PATH}"
+    event_staging=''
+else
+    event_capture_status=$?
+    rm -f -- "${event_staging}"
+    event_staging=''
+fi
+
+event_count=0
+if [[ ${event_capture_status} -eq 0 ]]; then
+    event_count=$(wc -l < "${EVENT_LOG_PATH}")
+fi
+{
+    printf 'structured_event_count: %s\n' "${event_count}"
+    printf 'structured_event_capture_status: %s\n' "${event_capture_status}"
+} | tee -a "${LOG_PATH}"
+
 if [[ ${qemu_status} -ne 0 ]]; then
     fail "QEMU exited with status ${qemu_status}; boot log: ${LOG_PATH}"
 fi
+if [[ ${event_capture_status} -ne 0 ]]; then
+    fail "structured boot-event capture failed with status ${event_capture_status}; boot log: ${LOG_PATH}"
+fi
 
 echo "Node QEMU boot log: ${LOG_PATH}"
+echo "Node QEMU boot events: ${EVENT_LOG_PATH}"

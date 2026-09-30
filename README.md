@@ -140,7 +140,11 @@ Boot that canonical ISO in the minimal headless development guest with:
 BIOS is the default; `--uefi` uses an available OVMF installation and a
 disposable variable-store copy. Both modes use serial output, retain the most
 recent transcript at `build/logs/qemu-last-run.log`, and create no virtual
-disk or persistent guest state.
+disk or persistent guest state. The launcher also extracts the micro-OS's
+existing bounded JSON records to `build/logs/qemu-boot-events.jsonl`, one
+event per line with `record`, `subject`, `outcome`, and normally `detail`
+fields. This observation artifact is intended for development automation; it
+does not grant boot acceptance or runtime readiness.
 
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:
