@@ -37,8 +37,12 @@ PROFILE_KEYS = {
     "memory_mb",
     "debug_enabled",
     "gdb_port",
+    "network_enabled",
+    "network_peer",
+    "mac_address",
 }
 NODE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,31}\Z")
+MAC_PATTERN = re.compile(r"02:([0-9a-f]{2}:){4}[0-9a-f]{2}\Z")
 MAX_PROFILES = 64
 MAX_PROFILE_BYTES = 16 * 1024
 MAX_STATE_BYTES = 32 * 1024
@@ -64,6 +68,9 @@ class NodeProfile:
     memory_mb: int
     debug_enabled: bool
     gdb_port: int
+    network_enabled: bool
+    network_peer: str
+    mac_address: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,6 +84,7 @@ class InstancePaths:
     serial_log: Path
     event_log: Path
     controller_log: Path
+    network_socket: Path
 
 
 @dataclasses.dataclass(frozen=True)
@@ -139,6 +147,9 @@ def load_profiles() -> dict[str, NodeProfile]:
         node_id = raw["node_id"]
         firmware = raw["firmware"]
         debug_enabled = raw["debug_enabled"]
+        network_enabled = raw["network_enabled"]
+        network_peer = raw["network_peer"]
+        mac_address = raw["mac_address"]
         if not isinstance(node_id, str) or NODE_ID_PATTERN.fullmatch(node_id) is None:
             raise LabError(f"profile node_id is invalid: {path}")
         if path.stem != node_id:
@@ -147,6 +158,16 @@ def load_profiles() -> dict[str, NodeProfile]:
             raise LabError(f"profile firmware must be bios or uefi: {path}")
         if not isinstance(debug_enabled, bool):
             raise LabError(f"profile debug_enabled must be a boolean: {path}")
+        if not isinstance(network_enabled, bool) or not network_enabled:
+            raise LabError(f"profile network_enabled must be true: {path}")
+        if (
+            not isinstance(network_peer, str)
+            or NODE_ID_PATTERN.fullmatch(network_peer) is None
+            or network_peer == node_id
+        ):
+            raise LabError(f"profile network_peer is invalid: {path}")
+        if not isinstance(mac_address, str) or MAC_PATTERN.fullmatch(mac_address) is None:
+            raise LabError(f"profile mac_address is invalid: {path}")
         profile = NodeProfile(
             node_id=node_id,
             firmware=firmware,
@@ -154,10 +175,25 @@ def load_profiles() -> dict[str, NodeProfile]:
             memory_mb=require_int(raw["memory_mb"], "memory_mb", 128, 8192),
             debug_enabled=debug_enabled,
             gdb_port=require_int(raw["gdb_port"], "gdb_port", 1024, 65535),
+            network_enabled=network_enabled,
+            network_peer=network_peer,
+            mac_address=mac_address,
         )
         if node_id in profiles:
             raise LabError(f"duplicate virtual-node identity: {node_id}")
         profiles[node_id] = profile
+    gdb_ports = [profile.gdb_port for profile in profiles.values()]
+    if len(gdb_ports) != len(set(gdb_ports)):
+        raise LabError("virtual-node GDB ports must be unique")
+    mac_addresses = [profile.mac_address for profile in profiles.values()]
+    if len(mac_addresses) != len(set(mac_addresses)):
+        raise LabError("virtual-node MAC addresses must be unique")
+    for profile in profiles.values():
+        peer = profiles.get(profile.network_peer)
+        if peer is None or peer.network_peer != profile.node_id:
+            raise LabError(
+                f"virtual-node network peer must be present and reciprocal: {profile.node_id}"
+            )
     return profiles
 
 
@@ -183,6 +219,7 @@ def instance_paths(profile: NodeProfile) -> InstancePaths:
         serial_log=log_dir / "qemu-last-run.log",
         event_log=log_dir / "qemu-boot-events.jsonl",
         controller_log=log_dir / "controller-launch.log",
+        network_socket=state_dir / "lab-network.sock",
     )
 
 
@@ -297,6 +334,27 @@ def has_argument_pair(argv: tuple[str, ...], option: str, value: str) -> bool:
     )
 
 
+def network_arguments(profile: NodeProfile) -> tuple[str, str]:
+    local = instance_paths(profile).network_socket
+    peer = INSTANCE_ROOT / profile.network_peer / "state" / "lab-network.sock"
+    netdev = (
+        "dgram,id=node_lab_net,"
+        f"local.type=unix,local.path={local},"
+        f"remote.type=unix,remote.path={peer}"
+    )
+    device = f"virtio-net-pci,netdev=node_lab_net,mac={profile.mac_address}"
+    return netdev, device
+
+
+def network_attachment(profile: NodeProfile, running: ProcessInfo | None) -> str:
+    if running is None:
+        return "configured"
+    try:
+        return "attached" if instance_paths(profile).network_socket.is_socket() else "missing"
+    except OSError:
+        return "unknown"
+
+
 def matches_managed_qemu(
     info: ProcessInfo, profile: NodeProfile, expected_iso: Path
 ) -> bool:
@@ -304,11 +362,13 @@ def matches_managed_qemu(
         return False
     executable = Path(info.argv[0]).name
     marker = f"guest={profile.node_id},process={profile.node_id}"
+    netdev, device = network_arguments(profile)
     return (
         executable.startswith("qemu-system-")
         and has_argument_pair(info.argv, "-name", marker)
         and has_argument_pair(info.argv, "-cdrom", str(expected_iso))
-        and has_argument_pair(info.argv, "-nic", "none")
+        and has_argument_pair(info.argv, "-netdev", netdev)
+        and has_argument_pair(info.argv, "-device", device)
     )
 
 
@@ -370,6 +430,33 @@ def state_process(
     if not matches_managed_qemu(info, profile, ISO_PATH):
         return None, "process_identity_mismatch"
     return info, "running"
+
+
+def launcher_process(state: dict[str, Any] | None) -> ProcessInfo | None:
+    if state is None:
+        return None
+    pid = state.get("launcher_pid")
+    start_ticks = state.get("launcher_start_ticks")
+    if (
+        isinstance(pid, bool)
+        or not isinstance(pid, int)
+        or isinstance(start_ticks, bool)
+        or not isinstance(start_ticks, int)
+    ):
+        return None
+    info = process_info(pid)
+    if info is None or info.state == "Z" or info.start_ticks != start_ticks:
+        return None
+    return info
+
+
+def wait_for_launcher_exit(state: dict[str, Any] | None) -> bool:
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if launcher_process(state) is None:
+            return True
+        time.sleep(0.05)
+    return launcher_process(state) is None
 
 
 def stopped_state(
@@ -443,6 +530,10 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
         state, running, _ = reconcile(profile, paths)
         if running is not None:
             raise LabError(f"{profile.node_id} is already running as QEMU PID {running.pid}")
+        if not wait_for_launcher_exit(state):
+            raise LabError(
+                f"previous launcher for {profile.node_id} is still finalizing logs"
+            )
         unrecorded = find_managed_qemu(profile, ISO_PATH)
         if unrecorded:
             pids = ", ".join(str(item.pid) for item in unrecorded)
@@ -467,6 +558,10 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
             "NODE_QEMU_VCPUS",
             "NODE_QEMU_MEMORY_MB",
             "NODE_QEMU_TIMEOUT_SECONDS",
+            "NODE_QEMU_NETWORK_ENABLED",
+            "NODE_QEMU_NETWORK_MAC",
+            "NODE_QEMU_NETWORK_LOCAL_SOCKET",
+            "NODE_QEMU_NETWORK_PEER_SOCKET",
         ):
             environment.pop(name, None)
         environment.update(
@@ -476,6 +571,15 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
                 "NODE_QEMU_VCPUS": str(profile.vcpus),
                 "NODE_QEMU_MEMORY_MB": str(profile.memory_mb),
                 "NODE_QEMU_TIMEOUT_SECONDS": "600" if debug else "90",
+                "NODE_QEMU_NETWORK_ENABLED": "1",
+                "NODE_QEMU_NETWORK_MAC": profile.mac_address,
+                "NODE_QEMU_NETWORK_LOCAL_SOCKET": str(paths.network_socket),
+                "NODE_QEMU_NETWORK_PEER_SOCKET": str(
+                    INSTANCE_ROOT
+                    / profile.network_peer
+                    / "state"
+                    / "lab-network.sock"
+                ),
             }
         )
         command = launch_command(profile, debug)
@@ -511,6 +615,10 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
             "firmware": profile.firmware,
             "vcpus": profile.vcpus,
             "memory_mb": profile.memory_mb,
+            "network_backend": "unix_dgram_point_to_point",
+            "network_peer": profile.network_peer,
+            "network_socket": str(paths.network_socket),
+            "mac_address": profile.mac_address,
             "debug_enabled": debug,
             "gdb_endpoint": f"127.0.0.1:{profile.gdb_port}" if debug else None,
             "iso_path": str(ISO_PATH),
@@ -577,6 +685,9 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
         print(f"qemu_pid: {qemu.pid}")
         print(f"firmware: {profile.firmware}")
         print(f"debug_enabled: {str(debug).lower()}")
+        print(f"network_attachment: {network_attachment(profile, qemu)}")
+        print(f"network_peer: {profile.network_peer}")
+        print(f"mac_address: {profile.mac_address}")
         print(f"serial_log: {paths.serial_log}")
         print(f"event_log: {paths.event_log}")
 
@@ -636,10 +747,20 @@ def stop_node(profile: NodeProfile, allow_stopped: bool = True) -> None:
                         f"QEMU PID {info.pid} did not stop after bounded termination"
                     )
 
-        write_state(paths, stopped_state(profile, state, "operator_stop"))
+        launcher_finished = wait_for_launcher_exit(state)
+        write_state(
+            paths,
+            stopped_state(
+                profile,
+                state,
+                "operator_stop" if launcher_finished else "launcher_finalizing",
+            ),
+        )
         remove_pid_file(paths)
         print(f"stopped: {profile.node_id}")
         print(f"qemu_pid: {info.pid}")
+        if not launcher_finished:
+            print("launcher_state: finalizing")
 
 
 def read_events(paths: InstancePaths) -> tuple[list[dict[str, Any]], list[str]]:
@@ -723,6 +844,11 @@ def print_status(profile: NodeProfile) -> None:
         print(f"event_count: {event_count}")
         print(f"latest_final_outcome: {final}")
         print(f"latest_shutdown_outcome: {shutdown}")
+        print(f"boot_state: {final}")
+        print(f"network_attachment: {network_attachment(profile, info)}")
+        print(f"network_backend: unix_dgram_point_to_point")
+        print(f"network_peer: {profile.network_peer}")
+        print(f"mac_address: {profile.mac_address}")
         print(f"serial_log: {paths.serial_log}")
         print(f"event_log: {paths.event_log}")
         print(f"debug_enabled: {str(debug).lower()}")
@@ -731,7 +857,7 @@ def print_status(profile: NodeProfile) -> None:
 
 def print_list() -> None:
     profiles = load_profiles()
-    print("NODE ID\tSTATE\tPID\tFIRMWARE\tLAST BOOT RESULT")
+    print("NODE ID\tSTATE\tPID\tFIRMWARE\tLAST BOOT RESULT\tNETWORK")
     for node_id in sorted(profiles):
         profile = profiles[node_id]
         paths = instance_paths(profile)
@@ -740,7 +866,8 @@ def print_list() -> None:
             _, final, _ = event_summary(paths)
         print(
             f"{node_id}\t{'running' if info else 'stopped'}\t"
-            f"{info.pid if info else '-'}\t{profile.firmware}\t{final}"
+            f"{info.pid if info else '-'}\t{profile.firmware}\t{final}\t"
+            f"{network_attachment(profile, info)}"
         )
 
 

@@ -185,17 +185,21 @@ continuing preserves the same serial transcript, structured-event capture,
 bounded timeout, firmware choices, and guest shutdown behavior. Normal QEMU
 boot remains unpaused and exposes no debugger.
 
-`python/node_lab.py` provides the first bounded managed-instance layer around
-those same launchers. The only tracked profile is
-`config/virtual_nodes/node-001.json`, which declares firmware, vCPU count,
-memory, and optional loopback debug settings. The controller can list, inspect,
-start, stop, restart, and observe the instance; generated state and node-local
-serial/JSONL logs remain disposable under `build/virtual/node-001/`. Stop
+`python/node_lab.py` provides a bounded two-instance layer around those same
+launchers. The tracked `node-001` and `node-002` profiles declare firmware,
+vCPU count, memory, unique loopback debug settings, deterministic local MACs,
+and reciprocal network peers. The controller can list, inspect, start, stop,
+restart, and observe either instance; generated state and node-local
+serial/JSONL logs remain disposable under `build/virtual/NODE/`. Stop
 operations require a recorded PID plus matching process-start and QEMU command
 identity, preventing a stale PID from authorizing a signal. Status reports
 observed process and boot evidence only; it does not infer service health or
-runtime readiness. This is still one local VM, not networking, orchestration,
-storage, ACS, or a general virtual-node platform.
+runtime readiness. The guests share one unprivileged QEMU Unix-datagram
+point-to-point Ethernet segment using `virtio-net-pci`; no host bridge, TAP,
+NAT, internet path, or persistent network state is created. The kernel already
+contains the required virtio networking support. Guest IP configuration and
+peer connectivity proof remain absent, as do orchestration, storage, ACS, and
+a general virtual-node platform.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.

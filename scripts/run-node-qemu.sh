@@ -17,6 +17,10 @@ GDB_PORT=${NODE_QEMU_GDB_PORT:-1234}
 NODE_ID=${NODE_QEMU_NODE_ID:-}
 VCPUS=${NODE_QEMU_VCPUS:-1}
 MEMORY_MB=${NODE_QEMU_MEMORY_MB:-512}
+NETWORK_ENABLED=${NODE_QEMU_NETWORK_ENABLED:-0}
+NETWORK_MAC=${NODE_QEMU_NETWORK_MAC:-}
+NETWORK_LOCAL_SOCKET_INPUT=${NODE_QEMU_NETWORK_LOCAL_SOCKET:-}
+NETWORK_PEER_SOCKET_INPUT=${NODE_QEMU_NETWORK_PEER_SOCKET:-}
 FIRMWARE=bios
 MAX_EVENT_COUNT=256
 MAX_EVENT_BYTES=262144
@@ -40,7 +44,8 @@ Environment:
   NODE_QEMU_OVMF_VARS        optional OVMF variable template override for --uefi
 
 The managed-node controller also supplies bounded internal environment values
-for its per-node log directory, process identity, vCPU count, and memory size.
+for its per-node log directory, process identity, resource limits, and private
+Unix-datagram network attachment.
 
 Outputs:
   build/logs/qemu-last-run.log
@@ -80,10 +85,36 @@ done
     fail 'NODE_QEMU_MEMORY_MB must be an integer from 128 through 8192'
 [[ -z ${NODE_ID} || ${NODE_ID} =~ ^[a-z0-9][a-z0-9-]{0,31}$ ]] ||
     fail 'NODE_QEMU_NODE_ID must be a lowercase identifier of at most 32 characters'
+[[ ${NETWORK_ENABLED} == 0 || ${NETWORK_ENABLED} == 1 ]] ||
+    fail 'NODE_QEMU_NETWORK_ENABLED must be 0 or 1'
 case "${LOG_DIR}" in
     "${BUILD_ROOT}"/*) ;;
     *) fail 'NODE_QEMU_LOG_DIR must resolve beneath the repository build directory' ;;
 esac
+network_local_socket=''
+network_peer_socket=''
+if [[ ${NETWORK_ENABLED} == 1 ]]; then
+    [[ -n ${NODE_ID} ]] ||
+        fail 'managed network attachment requires NODE_QEMU_NODE_ID'
+    [[ ${NETWORK_MAC} =~ ^02:([0-9a-f]{2}:){4}[0-9a-f]{2}$ ]] ||
+        fail 'NODE_QEMU_NETWORK_MAC must be a lowercase locally administered MAC'
+    [[ -n ${NETWORK_LOCAL_SOCKET_INPUT} && -n ${NETWORK_PEER_SOCKET_INPUT} ]] ||
+        fail 'managed network attachment requires local and peer socket paths'
+    network_local_socket=$(realpath -m -- "${NETWORK_LOCAL_SOCKET_INPUT}")
+    network_peer_socket=$(realpath -m -- "${NETWORK_PEER_SOCKET_INPUT}")
+    case "${network_local_socket}" in
+        "${BUILD_ROOT}/virtual"/*) ;;
+        *) fail 'managed network local socket must resolve beneath build/virtual' ;;
+    esac
+    case "${network_peer_socket}" in
+        "${BUILD_ROOT}/virtual"/*) ;;
+        *) fail 'managed network peer socket must resolve beneath build/virtual' ;;
+    esac
+    [[ ${network_local_socket} != "${network_peer_socket}" ]] ||
+        fail 'managed network local and peer sockets must differ'
+    [[ ${network_local_socket} != *,* && ${network_peer_socket} != *,* ]] ||
+        fail 'managed network socket paths must not contain commas'
+fi
 if [[ ${DEBUG_MODE} == 1 ]]; then
     [[ ${GDB_PORT} =~ ^[0-9]{4,5}$ ]] &&
         (( GDB_PORT >= 1024 && GDB_PORT <= 65535 )) ||
@@ -101,11 +132,15 @@ event_staging=''
 cleanup() {
     [[ -z ${uefi_vars_copy} ]] || rm -f -- "${uefi_vars_copy}"
     [[ -z ${event_staging} ]] || rm -f -- "${event_staging}"
+    [[ -z ${network_local_socket} ]] || rm -f -- "${network_local_socket}"
 }
 trap cleanup EXIT
 
 event_staging=$(mktemp "${TEMP_DIR}/qemu-boot-events.XXXXXX.jsonl")
 rm -f -- "${EVENT_LOG_PATH}"
+if [[ ${NETWORK_ENABLED} == 1 ]]; then
+    rm -f -- "${network_local_socket}"
+fi
 
 qemu_command=(
     "${QEMU_BIN}"
@@ -116,12 +151,25 @@ qemu_command=(
     -m "${MEMORY_MB}M"
     -cdrom "${ISO_PATH}"
     -boot order=d
-    -nic none
     -display none
     -serial stdio
     -monitor none
     -no-reboot
 )
+
+if [[ ${NETWORK_ENABLED} == 1 ]]; then
+    network_backend="dgram,id=node_lab_net,local.type=unix"
+    network_backend+=",local.path=${network_local_socket},remote.type=unix"
+    network_backend+=",remote.path=${network_peer_socket}"
+    qemu_command+=(
+        -netdev "${network_backend}"
+        -device "virtio-net-pci,netdev=node_lab_net,mac=${NETWORK_MAC}"
+    )
+else
+    qemu_command+=(
+        -nic none
+    )
+fi
 
 if [[ -n ${NODE_ID} ]]; then
     qemu_command+=(
@@ -180,6 +228,14 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'memory_mb: %s\n' "${MEMORY_MB}"
     if [[ -n ${NODE_ID} ]]; then
         printf 'managed_node_id: %s\n' "${NODE_ID}"
+    fi
+    if [[ ${NETWORK_ENABLED} == 1 ]]; then
+        printf 'network_backend: unix_dgram_point_to_point\n'
+        printf 'network_mac: %s\n' "${NETWORK_MAC}"
+        printf 'network_local_socket: %s\n' "${network_local_socket}"
+        printf 'network_peer_socket: %s\n' "${network_peer_socket}"
+    else
+        printf 'network_backend: none\n'
     fi
     printf 'timeout_seconds: %s\n' "${TIMEOUT_SECONDS}"
     if [[ ${DEBUG_MODE} == 1 ]]; then
