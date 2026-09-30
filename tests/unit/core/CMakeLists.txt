@@ -118,3 +118,8 @@ add_executable(test_acs_admission test_acs_admission.cpp)
 target_link_libraries(test_acs_admission PRIVATE prometheus_acs)
 target_compile_features(test_acs_admission PRIVATE cxx_std_17)
 add_test(NAME prometheus_acs_admission COMMAND test_acs_admission)
+
+add_executable(test_acs_transport_contract test_acs_transport_contract.cpp)
+target_link_libraries(test_acs_transport_contract PRIVATE prometheus_acs)
+target_compile_features(test_acs_transport_contract PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_transport_contract COMMAND test_acs_transport_contract)

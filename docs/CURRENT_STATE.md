@@ -124,12 +124,17 @@ and other accelerator paths remain incomplete or placeholder-level.
 - immutable descriptors and deterministic bounded registry snapshots;
 - separately versioned lifecycle, operational, and enforcement transitions;
 - bounded transition history and idempotency handling;
-- pure metadata-only, non-reserving admission evaluation.
+- pure metadata-only, non-reserving admission evaluation;
+- transport-neutral binding and attachment snapshots, a bounded typed signal
+  envelope, and pure structural validation that composes current registry,
+  lifecycle, and admission evidence without treating validation as acceptance.
 
 The public Draft ACS-0000 through ACS-0009 specifications are retained under
-`docs/architecture/acs/`. Live connections, transport, network discovery,
-authentication providers, resource reservation, persistence, descriptor
-removal, and a public ACS C ABI are not implemented.
+`docs/architecture/acs/`. The transport-facing additions define contracts only:
+they perform no serialization, I/O, reservation, lifecycle mutation, or signal
+delivery. Live connections, transport, network discovery, authentication
+providers, resource reservation, persistence, descriptor removal, and a public
+ACS C ABI are not implemented.
 
 ## Current kernel relationship
 
