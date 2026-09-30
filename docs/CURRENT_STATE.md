@@ -127,14 +127,18 @@ and other accelerator paths remain incomplete or placeholder-level.
 - pure metadata-only, non-reserving admission evaluation;
 - transport-neutral binding and attachment snapshots, a bounded typed signal
   envelope, and pure structural validation that composes current registry,
-  lifecycle, and admission evidence without treating validation as acceptance.
+  lifecycle, and admission evidence without treating validation as acceptance;
+- a versioned, deterministic reference envelope representation bounded to
+  8 KiB, with at most 256 inline bytes and four provenance references.
 
 The public Draft ACS-0000 through ACS-0009 specifications are retained under
-`docs/architecture/acs/`. The transport-facing additions define contracts only:
-they perform no serialization, I/O, reservation, lifecycle mutation, or signal
-delivery. Live connections, transport, network discovery, authentication
-providers, resource reservation, persistence, descriptor removal, and a public
-ACS C ABI are not implemented.
+`docs/architecture/acs/`. The managed development image includes one narrow
+reference use of those contracts: a static conformance service uses explicit
+registry declarations, real lifecycle transitions, advisory admission, active
+binding/attachment snapshots, bounded UDP serialization, and receiver-side
+validation across the isolated two-node lab link. It is not production-secure
+and supplies no authentication, discovery, trust, routing, reservation,
+persistence, descriptor removal, private ACS behavior, or public ACS C ABI.
 
 ## Current kernel relationship
 
@@ -202,9 +206,14 @@ observed process and boot evidence only; it does not infer service health or
 runtime readiness. The guests share one unprivileged QEMU Unix-datagram
 point-to-point Ethernet segment using `virtio-net-pci`; no host bridge, TAP,
 NAT, internet path, or persistent network state is created. The kernel already
-contains the required virtio networking support. Guest IP configuration and
-peer connectivity proof remain absent, as do orchestration, storage, ACS, and
-a general virtual-node platform.
+contains the required virtio networking support. A managed profile selector is
+passed explicitly through QEMU DMI metadata; the static conformance service
+selects fixed addresses `10.77.0.1/24` and `10.77.0.2/24`, uses UDP port
+`39001`, and attempts one bounded signal in each direction. DMI, MAC, and IP
+data select only this declared development profile and do not prove logical
+identity, trust, or authority. `node_lab.py acs-events NODE` surfaces the
+resulting public evidence without making a policy judgment. This remains a
+disposable reference transport, not a cluster or ACS control plane.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.
@@ -216,7 +225,8 @@ subsystem work before integration. See `AGENTS.md` for branch rules.
 - CPU affinity/NUMA orchestration and typed CPU kernel execution;
 - general GPU payload and memory-lease execution;
 - HailoRT, IMX500, AMD GPU, and Xeon Phi production backends;
-- live ACS transport, discovery, authentication, persistence, and reservation;
+- production ACS transport, discovery, authentication, secure sessions,
+  persistence, and reservation;
 - MEM persistence and IMM implementation;
 - production BOOT acceptance, installation, recovery, and media workflows;
 - real-hardware coverage across supported ARM and heterogeneous targets;

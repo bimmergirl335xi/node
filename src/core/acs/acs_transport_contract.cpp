@@ -357,4 +357,50 @@ TransportValidationResult validate_transport_submission(
     }
 }
 
+const char* to_string(TransportValidationCode code) noexcept {
+    switch (code) {
+        case TransportValidationCode::valid: return "valid";
+        case TransportValidationCode::valid_with_restrictions:
+            return "valid_with_restrictions";
+        case TransportValidationCode::invalid_configuration:
+            return "invalid_configuration";
+        case TransportValidationCode::malformed_contract: return "malformed_contract";
+        case TransportValidationCode::broken_reference: return "broken_reference";
+        case TransportValidationCode::binding_unknown: return "binding_unknown";
+        case TransportValidationCode::binding_unavailable: return "binding_unavailable";
+        case TransportValidationCode::binding_unsupported: return "binding_unsupported";
+        case TransportValidationCode::binding_conflicting: return "binding_conflicting";
+        case TransportValidationCode::attachment_unknown: return "attachment_unknown";
+        case TransportValidationCode::attachment_inactive: return "attachment_inactive";
+        case TransportValidationCode::attachment_conflicting:
+            return "attachment_conflicting";
+        case TransportValidationCode::lifecycle_unknown: return "lifecycle_unknown";
+        case TransportValidationCode::lifecycle_unavailable:
+            return "lifecycle_unavailable";
+        case TransportValidationCode::lifecycle_incompatible:
+            return "lifecycle_incompatible";
+        case TransportValidationCode::admission_denied: return "admission_denied";
+        case TransportValidationCode::admission_unknown: return "admission_unknown";
+        case TransportValidationCode::admission_deferred: return "admission_deferred";
+        case TransportValidationCode::admission_conflicting:
+            return "admission_conflicting";
+        case TransportValidationCode::admission_unavailable:
+            return "admission_unavailable";
+        case TransportValidationCode::admission_stale: return "admission_stale";
+        case TransportValidationCode::freshness_unknown: return "freshness_unknown";
+        case TransportValidationCode::freshness_stale: return "freshness_stale";
+        case TransportValidationCode::freshness_conflicting:
+            return "freshness_conflicting";
+        case TransportValidationCode::freshness_unavailable:
+            return "freshness_unavailable";
+        case TransportValidationCode::provenance_invalid: return "provenance_invalid";
+        case TransportValidationCode::schema_incompatible: return "schema_incompatible";
+        case TransportValidationCode::direction_incompatible:
+            return "direction_incompatible";
+        case TransportValidationCode::signal_too_large: return "signal_too_large";
+        case TransportValidationCode::resource_exhausted: return "resource_exhausted";
+    }
+    return "malformed_contract";
+}
+
 }  // namespace prometheus::core::acs

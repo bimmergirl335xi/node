@@ -46,6 +46,29 @@ node_p01_add_probe(node_p01_optional_intentional_failure optional_intentional_fa
 node_p01_add_probe(node_p01_timeout_probe timeout_probe 7)
 node_p01_add_probe(node_p01_signal_termination_probe signal_termination_probe 8)
 
+add_executable(
+    node_p01_acs_reference_transport
+    src/acs_reference_service.cpp
+)
+target_link_libraries(
+    node_p01_acs_reference_transport
+    PRIVATE
+        prometheus_acs
+        Threads::Threads
+)
+target_compile_features(node_p01_acs_reference_transport PRIVATE cxx_std_17)
+target_compile_options(
+    node_p01_acs_reference_transport
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+target_link_options(node_p01_acs_reference_transport PRIVATE -static)
+set_target_properties(
+    node_p01_acs_reference_transport
+    PROPERTIES
+        OUTPUT_NAME acs_reference_transport
+        RUNTIME_OUTPUT_DIRECTORY "${NODE_P01_ROOT}/node/services"
+)
+
 file(MAKE_DIRECTORY "${NODE_P01_ROOT}/etc/node-p01")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/manifests/p01-public-startup-v1.manifest"

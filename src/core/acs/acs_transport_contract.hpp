@@ -175,6 +175,8 @@ struct TransportValidationResult {
     const SignalEnvelope& envelope,
     const TransportContractOptions& options = {}) noexcept;
 
+[[nodiscard]] const char* to_string(TransportValidationCode code) noexcept;
+
 }  // namespace prometheus::core::acs
 
 #endif

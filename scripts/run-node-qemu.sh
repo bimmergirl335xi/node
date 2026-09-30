@@ -174,6 +174,7 @@ fi
 if [[ -n ${NODE_ID} ]]; then
     qemu_command+=(
         -name "guest=${NODE_ID},process=${NODE_ID}"
+        -smbios "type=1,product=Node-Development-VM,serial=${NODE_ID}"
     )
 fi
 

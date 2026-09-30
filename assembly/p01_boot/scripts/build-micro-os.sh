@@ -26,7 +26,8 @@ cmake --build "${node_build}" --parallel 1 --target \
     node_p01_required_semantic_success \
     node_p01_optional_intentional_failure \
     node_p01_timeout_probe \
-    node_p01_signal_termination_probe
+    node_p01_signal_termination_probe \
+    node_p01_acs_reference_transport
 
 cmake -E rm -rf "${root}"
 mkdir -p -- "${root}/dev" "${root}/proc" "${root}/sys" \
@@ -34,7 +35,7 @@ mkdir -p -- "${root}/dev" "${root}/proc" "${root}/sys" \
 install -m 0755 "${node_build}/assembly/p01-root/init" "${root}/init"
 for service in identity_probe volatile_filesystem_probe concurrent_delay_a \
     concurrent_delay_b required_semantic_success optional_intentional_failure \
-    timeout_probe signal_termination_probe; do
+    timeout_probe signal_termination_probe acs_reference_transport; do
     install -m 0755 "${node_build}/assembly/p01-root/node/services/${service}" \
         "${root}/node/services/${service}"
 done

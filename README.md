@@ -22,7 +22,7 @@ replace the legacy robot loop.
 - service lifecycle, adaptive-state, architecture-shadow, and proposal-ABI
   foundations;
 - bounded public ACS descriptors, registry, lifecycle state, and pure admission
-  evaluation;
+  evaluation, plus an isolated two-node reference transport;
 - a static C11 PID 1 micro-OS and P01 candidate-image tooling;
 - a RAM-only assembly mechanism proof and a public external-component ABI.
 
@@ -42,10 +42,10 @@ for the present baseline and validation caveats.
 
 ### Planned or incomplete
 
-Production scheduling, general CPU/GPU kernel dispatch, live ACS connections,
-ACS transport and persistence, MEM persistence, IMM implementation, production
-assembly authority, installation/recovery, and migration away from the legacy
-robot loop are not complete.
+Production scheduling, general CPU/GPU kernel dispatch, production-secure ACS
+transport, ACS discovery and persistence, MEM persistence, IMM implementation,
+production assembly authority, installation/recovery, and migration away from
+the legacy robot loop are not complete.
 
 ## Boot and runtime architecture
 
@@ -179,11 +179,13 @@ launchers without replacing their boot contract:
 ./python/node_lab.py start node-001
 ./python/node_lab.py start node-002
 ./python/node_lab.py events node-001
+./python/node_lab.py acs-events node-001
 ./python/node_lab.py serial node-001
 ./python/node_lab.py stop node-001
 ```
 
-`restart` and `debug-info` are also available, and `start NODE --debug` reuses
+`restart`, `acs-events`, and `debug-info` are also available, and
+`start NODE --debug` reuses
 the paused DEV-001D workflow with profile-specific loopback GDB ports.
 Generated PID/state records and per-node serial/event logs live only beneath
 `build/virtual/NODE/`. Before stopping an instance, the controller verifies
@@ -192,11 +194,15 @@ ISO argument, and exact private-network arguments. The two managed guests have
 deterministic locally administered MAC addresses and a private point-to-point
 Ethernet segment carried by QEMU Unix datagram sockets under `build/virtual/`.
 It has no NAT, host bridge, TAP,
-internet access, or host-LAN listener. The current P01 guest does not configure
-IP addresses, so attachment is observed without claiming peer connectivity.
-This remains a disposable development convenience, not a cluster or ACS
-control plane. The direct build, normal QEMU, and debug launchers remain
-independently usable and retain their no-network default.
+internet access, or host-LAN listener. Managed guests use only the fixed
+development addresses `10.77.0.1/24` and `10.77.0.2/24` and UDP port `39001`
+to exchange a bounded `public.transport.conformance` signal. Both directions
+are structurally validated against public ACS registry, lifecycle, admission,
+binding, attachment, and envelope evidence. This unencrypted reference path is
+isolated development/conformance transport, not peer discovery, authentication,
+a production-secure session, a cluster, or a private ACS control plane. The
+direct build, normal QEMU, and debug launchers remain independently usable and
+retain their no-network default.
 
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:

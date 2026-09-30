@@ -3,6 +3,7 @@ add_library(prometheus_acs STATIC
     acs_lifecycle.cpp
     acs_admission.cpp
     acs_transport_contract.cpp
+    acs_reference_wire.cpp
 )
 
 target_include_directories(prometheus_acs

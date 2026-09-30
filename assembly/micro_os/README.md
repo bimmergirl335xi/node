@@ -79,6 +79,16 @@ optional intentional-failure, timeout/escalation, and signal-termination
 probes. These are public conformance probes, not CPU, GPU, ACS, network, or
 production runtime providers.
 
+`src/acs_reference_service.cpp` builds a separate static development service.
+For the two explicitly managed lab profiles only, it configures `eth0` with a
+fixed private address and exchanges a versioned, bounded public ACS conformance
+signal over UDP. It exercises the public registry, lifecycle, admission,
+binding, attachment, envelope, wire-validation, and structured-evidence paths.
+An unmanaged or single-node boot reports transport unavailability and retains
+the established P01 terminal behavior. This isolated reference mechanism is
+not peer discovery, authentication, a secure session, private ACS, or a
+production provider.
+
 ## Host validation
 
 From the repository root:

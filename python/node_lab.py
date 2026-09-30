@@ -54,6 +54,11 @@ MAX_SERIAL_LINES = 200
 MAX_PROCESS_INSPECTIONS = 131072
 START_WAIT_SECONDS = 8.0
 STOP_WAIT_SECONDS = 5.0
+ACS_IPV4 = {
+    "node-001": "10.77.0.1/24",
+    "node-002": "10.77.0.2/24",
+}
+ACS_UDP_PORT = 39001
 
 
 class LabError(RuntimeError):
@@ -363,12 +368,14 @@ def matches_managed_qemu(
     executable = Path(info.argv[0]).name
     marker = f"guest={profile.node_id},process={profile.node_id}"
     netdev, device = network_arguments(profile)
+    smbios = f"type=1,product=Node-Development-VM,serial={profile.node_id}"
     return (
         executable.startswith("qemu-system-")
         and has_argument_pair(info.argv, "-name", marker)
         and has_argument_pair(info.argv, "-cdrom", str(expected_iso))
         and has_argument_pair(info.argv, "-netdev", netdev)
         and has_argument_pair(info.argv, "-device", device)
+        and has_argument_pair(info.argv, "-smbios", smbios)
     )
 
 
@@ -688,6 +695,8 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
         print(f"network_attachment: {network_attachment(profile, qemu)}")
         print(f"network_peer: {profile.network_peer}")
         print(f"mac_address: {profile.mac_address}")
+        print(f"acs_reference_address: {ACS_IPV4[profile.node_id]}")
+        print(f"acs_reference_udp_port: {ACS_UDP_PORT}")
         print(f"serial_log: {paths.serial_log}")
         print(f"event_log: {paths.event_log}")
 
@@ -849,6 +858,8 @@ def print_status(profile: NodeProfile) -> None:
         print(f"network_backend: unix_dgram_point_to_point")
         print(f"network_peer: {profile.network_peer}")
         print(f"mac_address: {profile.mac_address}")
+        print(f"acs_reference_address: {ACS_IPV4[profile.node_id]}")
+        print(f"acs_reference_udp_port: {ACS_UDP_PORT}")
         print(f"serial_log: {paths.serial_log}")
         print(f"event_log: {paths.event_log}")
         print(f"debug_enabled: {str(debug).lower()}")
@@ -877,6 +888,26 @@ def print_events(profile: NodeProfile, limit: int) -> None:
     if not paths.event_log.exists():
         raise LabError(f"event log is not available: {paths.event_log}")
     for event in events[-limit:]:
+        print(json.dumps(event, separators=(",", ":"), sort_keys=True))
+    for message in malformed:
+        print(f"MALFORMED {message}", file=sys.stderr)
+    if malformed:
+        raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+
+
+def print_acs_events(profile: NodeProfile, limit: int) -> None:
+    paths = instance_paths(profile)
+    events, malformed = read_events(paths)
+    if not paths.event_log.exists():
+        raise LabError(f"event log is not available: {paths.event_log}")
+    selected = [
+        event for event in events
+        if isinstance(event.get("record"), str)
+        and event["record"].startswith("acs_")
+    ]
+    if not selected:
+        raise LabError(f"ACS evidence is not available: {paths.event_log}")
+    for event in selected[-limit:]:
         print(json.dumps(event, separators=(",", ":"), sort_keys=True))
     for message in malformed:
         print(f"MALFORMED {message}", file=sys.stderr)
@@ -948,6 +979,11 @@ def parser() -> argparse.ArgumentParser:
     events.add_argument(
         "--limit", type=lambda value: bounded_count(value, MAX_EVENT_LINES), default=20
     )
+    acs_events = commands.add_parser("acs-events")
+    acs_events.add_argument("node_id")
+    acs_events.add_argument(
+        "--limit", type=lambda value: bounded_count(value, MAX_EVENT_LINES), default=20
+    )
     serial = commands.add_parser("serial")
     serial.add_argument("node_id")
     serial.add_argument(
@@ -974,6 +1010,8 @@ def main(argv: list[str] | None = None) -> int:
             start_node(profile, args.debug)
         elif args.command == "events":
             print_events(profile, args.limit)
+        elif args.command == "acs-events":
+            print_acs_events(profile, args.limit)
         elif args.command == "serial":
             print_serial(profile, args.lines)
         elif args.command == "debug-info":
