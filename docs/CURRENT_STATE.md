@@ -178,6 +178,13 @@ JSON records at `build/logs/qemu-boot-events.jsonl`. Capture is limited to 256
 events and 256 KiB; it observes the established P01 lifecycle without adding
 new PID 1, runtime, or acceptance behavior.
 
+`scripts/debug-node-qemu.sh` is the opt-in debug entry point. It reuses the
+normal launcher and canonical ISO, requires the exposed `vmlinux`, starts QEMU
+paused, and binds the GDB remote interface only to loopback. Attaching and
+continuing preserves the same serial transcript, structured-event capture,
+bounded timeout, firmware choices, and guest shutdown behavior. Normal QEMU
+boot remains unpaused and exposes no debugger.
+
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.
 

@@ -10,6 +10,8 @@ EVENT_LOG_PATH="${LOG_DIR}/qemu-boot-events.jsonl"
 TEMP_DIR="${REPO_ROOT}/build/temp"
 QEMU_BIN=${NODE_QEMU_BIN:-qemu-system-x86_64}
 TIMEOUT_SECONDS=${NODE_QEMU_TIMEOUT_SECONDS:-90}
+DEBUG_MODE=${NODE_QEMU_DEBUG_MODE:-0}
+GDB_PORT=${NODE_QEMU_GDB_PORT:-1234}
 FIRMWARE=bios
 MAX_EVENT_COUNT=256
 MAX_EVENT_BYTES=262144
@@ -61,6 +63,13 @@ done
 [[ ${TIMEOUT_SECONDS} =~ ^[1-9][0-9]{0,2}$ ]] &&
     (( TIMEOUT_SECONDS <= 600 )) ||
     fail 'NODE_QEMU_TIMEOUT_SECONDS must be an integer from 1 through 600'
+[[ ${DEBUG_MODE} == 0 || ${DEBUG_MODE} == 1 ]] ||
+    fail 'NODE_QEMU_DEBUG_MODE must be 0 or 1'
+if [[ ${DEBUG_MODE} == 1 ]]; then
+    [[ ${GDB_PORT} =~ ^[0-9]{4,5}$ ]] &&
+        (( GDB_PORT >= 1024 && GDB_PORT <= 65535 )) ||
+        fail 'NODE_QEMU_GDB_PORT must be an integer from 1024 through 65535'
+fi
 command -v "${QEMU_BIN}" >/dev/null 2>&1 ||
     fail "QEMU executable not found: ${QEMU_BIN}"
 [[ -f ${ISO_PATH} && ! -L ${ISO_PATH} && -s ${ISO_PATH} ]] ||
@@ -94,6 +103,13 @@ qemu_command=(
     -monitor none
     -no-reboot
 )
+
+if [[ ${DEBUG_MODE} == 1 ]]; then
+    qemu_command+=(
+        -S
+        -gdb "tcp:127.0.0.1:${GDB_PORT}"
+    )
+fi
 
 if [[ ${FIRMWARE} == uefi ]]; then
     ovmf_code=${NODE_QEMU_OVMF_CODE:-}
@@ -136,6 +152,10 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'firmware: %s\n' "${FIRMWARE}"
     printf 'iso: %s\n' "${ISO_PATH}"
     printf 'timeout_seconds: %s\n' "${TIMEOUT_SECONDS}"
+    if [[ ${DEBUG_MODE} == 1 ]]; then
+        printf 'debug_mode: paused_gdb\n'
+        printf 'gdb_endpoint: 127.0.0.1:%s\n' "${GDB_PORT}"
+    fi
     printf 'qemu_command:'
     printf ' %q' "${qemu_command[@]}"
     printf '\n--- boot output ---\n'

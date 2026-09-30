@@ -146,6 +146,28 @@ event per line with `record`, `subject`, `outcome`, and normally `detail`
 fields. This observation artifact is intended for development automation; it
 does not grant boot acceptance or runtime readiness.
 
+For an opt-in debugging session, start the same ISO paused in QEMU:
+
+```sh
+./scripts/debug-node-qemu.sh
+```
+
+Then attach from a second terminal and explicitly continue the guest:
+
+```text
+gdb build/artifacts/vmlinux
+(gdb) target remote 127.0.0.1:1234
+(gdb) continue
+```
+
+The debug endpoint is loopback-only, the default session timeout is ten
+minutes, and `--port PORT`, `--bios`, and `--uefi` are supported. Normal boot
+does not expose a debug endpoint or start paused. A host GDB client is required
+and remains separate from the launcher. For VSCode, use the existing GDB
+extension with `build/artifacts/vmlinux` as the program and
+`127.0.0.1:1234` as the remote target, then continue execution from the
+debugger UI; no workspace configuration is required or tracked.
+
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:
 
