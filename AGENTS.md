@@ -69,6 +69,11 @@ trees, CMake output, object files, ISO staging, VM/debug state, logs, validation
 output, caches, and obsolete generated checkpoints must not become permanent
 source history.
 
+Use `/home/olivia/runtime/node` as the canonical Node checkout. Git branches do
+not require separate filesystem trees. Remove temporary recovery worktrees
+after reconciliation, do not make backup copies of the entire repository, and
+never treat anything under `build/` as authoritative source.
+
 Delete only clearly generated or obsolete material. If a file may contain
 unique user or project information, leave it in place and report it.
 
