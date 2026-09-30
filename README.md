@@ -131,6 +131,17 @@ It requires the exact external Linux kernel checkout documented in
 `build/`; the successfully validated development ISO is always promoted to
 `build/artifacts/node-current.iso`.
 
+Boot that canonical ISO in the minimal headless development guest with:
+
+```sh
+./scripts/run-node-qemu.sh
+```
+
+BIOS is the default; `--uefi` uses an available OVMF installation and a
+disposable variable-store copy. Both modes use serial output, retain the most
+recent transcript at `build/logs/qemu-last-run.log`, and create no virtual
+disk or persistent guest state.
+
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:
 

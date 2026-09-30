@@ -167,6 +167,13 @@ artifacts when available. A failed or partial build does not replace the last
 successfully promoted ISO; the exact Linux kernel source remains an external
 checkout.
 
+`scripts/run-node-qemu.sh` boots only that canonical ISO in a bounded,
+headless TCG guest. It defaults to BIOS and optionally uses OVMF with a
+disposable variable-store copy for UEFI. The guest has one vCPU, 512 MiB of
+memory, serial stdio, no network interface, no virtual disk, and no persistent
+VM state. The latest timestamped command, boot transcript, and exit status are
+stored under `build/logs/qemu-last-run.log`.
+
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.
 
