@@ -174,6 +174,23 @@ extension with `build/artifacts/vmlinux` as the program and
 `127.0.0.1:1234` as the remote target, then continue execution from the
 debugger UI; no workspace configuration is required or tracked.
 
+For a managed multi-node debugging session, launch the selected lab profiles
+paused and attach the bounded GDB/MI fleet controller:
+
+```sh
+./python/node_lab.py start-all --debug --mode lab
+./python/node_gdb_fleet.py
+```
+
+The controller discovers node identities and loopback GDB ports from the
+existing profiles, requires `build/artifacts/vmlinux`, and owns one GDB/MI3
+subprocess per selected node. GDB commands apply to the current selection;
+`select NODE`, `select all`, and `@NODE[,NODE] COMMAND` provide persistent and
+one-shot targeting. `status`, `nodes`, `reconnect`, `disconnect`, `help`, and
+`quit` are fleet commands. Asynchronous running, stopped, breakpoint, signal,
+thread, exit, and connection events retain node attribution. Exiting the
+frontend reaps only its GDB processes and never stops the managed VMs.
+
 The five managed development instances are declared under
 `config/virtual_nodes/`. A bounded Python standard-library controller discovers
 the profiles and wraps the same

@@ -189,6 +189,14 @@ remained healthy through a measured resident interval, isolated a single-node
 stop, and accepted that node's fresh restart and ACS rejoin. These are bounded
 development results for the current host and image, not production authority.
 
+DEV-003D host validation passed the focused GDB/MI controller tests and all 39
+existing CTest cases, attached the five paused managed guests on distinct
+loopback endpoints, and exercised broadcast, single-node, and explicit-set
+control. It observed attributed asynchronous stops, hit a stable relocated
+kernel symbol independently on all five nodes, contained one disconnected
+guest, remained usable after resident transition, and left every remaining VM
+running when the debugger frontend exited.
+
 ## Current development environment
 
 The primary workflow is Linux-hosted and headless-friendly. CMake drives host
@@ -222,6 +230,18 @@ paused, and binds the GDB remote interface only to loopback. Attaching and
 continuing preserves the same serial transcript, structured-event capture,
 bounded timeout, firmware choices, and guest shutdown behavior. Normal QEMU
 boot remains unpaused and exposes no debugger.
+
+`python/node_gdb_fleet.py` is the host-side interactive frontend for managed
+debug guests. It reuses `node_lab.py` profile discovery and exact managed-VM
+identity checks, accepts all configured profiles or an explicit subset, and
+caps a fleet at 50 sessions. Each selected node receives one owned GDB MI3
+subprocess using the single canonical `build/artifacts/vmlinux`; a reader
+thread continuously consumes bounded MI records and updates explicit starting,
+connecting, stopped, running, disconnected, exited, error, or unknown state.
+Commands may target all nodes, one persistent selection, or a small explicit
+node set, and failures remain per-node. Debugger exit reaps owned GDB processes
+without stopping QEMU. The controller adds no guest agent, guest runtime
+behavior, remote listener, per-node symbols, or persistent debugger state.
 
 `python/node_lab.py` provides a bounded five-instance layer around those same
 launchers. The tracked `node-001` through `node-005` profiles declare firmware,

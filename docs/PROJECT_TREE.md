@@ -102,8 +102,8 @@ Historical handoffs are evidence, not current authority.
 
 - general tools and probes: `tools/`
 - shell helpers: `scripts/`
-- Python utilities and the bounded five-node local VM, CPU-evidence, and
-  resident-runtime observation controller: `python/`
+- Python utilities, the bounded managed-VM/runtime controller, and the
+  profile-driven GDB/MI fleet frontend: `python/`
 - managed development-instance and private-link profiles:
   `config/virtual_nodes/`
 - simulation code: `simulator/`
