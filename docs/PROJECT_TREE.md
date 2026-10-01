@@ -64,7 +64,8 @@ Treat empty or placeholder files as unimplemented.
 ## Runtime and services
 
 - runtime/service lifecycle and shared state: `src/core/`
-- ACS runtime-local foundation: `src/core/acs/`
+- ACS runtime-local foundation, bounded discovery observations, and reference
+  discovery wire codec: `src/core/acs/`
 - service implementations: `src/services/`
 - scheduling/runtime helpers: `src/runtime/`
 - runtime/core tests: `tests/unit/core/`

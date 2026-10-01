@@ -131,6 +131,13 @@ bounded resource use. Discovery never grants trust or authority. Successful
 admission evaluation is advisory and non-reserving until an owning system
 performs an authorized action.
 
+Local participant discovery is represented as volatile observation state using
+the canonical participant identity type. Direct and hinted observations,
+staleness, transport bindings, and conflicts remain separate from descriptor
+registration, relationships, connections, attachments, trust, and authority.
+The public reference discovery epoch is current-boot restart evidence only; it
+is not authentication or a durable identity.
+
 The public repository may contain specifications, interfaces, ABI definitions,
 Linux-facing integration, public transports, and runtime glue. Proprietary ACS
 logic, production topology, credentials, trust thresholds, routing policy, and

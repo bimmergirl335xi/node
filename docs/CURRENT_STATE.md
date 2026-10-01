@@ -69,7 +69,8 @@ its assembly-service child process, retains a one-worker bounded pool, and
 answers a distinct post-transition execution probe while the permanent PID 1
 continues supervision. PID 1 admits that transition only after required
 startup, compatible CPU decision, candidate validation/activation, initial
-probe, and complete ACS evidence are all observed. The resulting readiness
+probe, and local ACS readiness are all observed; explicit mode additionally
+requires its configured-peer exchange. The resulting readiness
 claim is limited to the current boot, x86_64/AVX2 candidate, public ACS
 reference transport, and lab profile. It adds no durable installation, reboot
 continuation, GPU readiness, MEM/storage readiness, or production-wide
@@ -151,19 +152,28 @@ and other accelerator paths remain incomplete or placeholder-level.
   envelope, and pure structural validation that composes current registry,
   lifecycle, and admission evidence without treating validation as acceptance;
 - a versioned, deterministic reference envelope representation bounded to
-  8 KiB, with at most 256 inline bytes and four provenance references.
+  8 KiB, with at most 256 inline bytes and four provenance references;
+- a volatile, bounded participant-observation store using canonical
+  `ParticipantId`, with direct/hint kinds, observed/stale/conflict states,
+  monotonic current-boot timestamps, explicit capacity rejection, and no
+  descriptor-graph mutation; and
+- a separate version-1 pre-relationship discovery codec bounded to 1 KiB and
+  eight hints for presence, response, hint-query, and hint-response messages.
 
 The public Draft ACS-0000 through ACS-0009 specifications are retained under
-`docs/architecture/acs/`. The managed development image includes one narrow
-reference use of those contracts: a static service uses explicit
-registry declarations, real lifecycle transitions, advisory admission, active
-peer-specific binding/attachment snapshots, bounded UDP serialization, and
-receiver-side validation across the isolated five-node lab LAN. In conformance
-mode it exits after the bounded exchange; in lab mode it retains the same
-socket and bounded peer contexts, reports resident readiness, and validates
-and replies to a restarted peer without adding discovery or routing. It is not production-secure
-and supplies no authentication, discovery, trust, routing, reservation,
-persistence, descriptor removal, private ACS behavior, or public ACS C ABI.
+`docs/architecture/acs/`. The managed development image supports two narrow
+reference modes. Explicit mode uses configured registry declarations, real
+lifecycle transitions, advisory admission, active peer-specific
+binding/attachment snapshots, bounded UDP serialization, and receiver-side
+validation across the isolated five-node lab LAN. Discovery mode requires zero
+configured remote peers, binds guest-local multicast `239.77.0.1:39002`, and
+continuously maintains bounded direct/hinted observations with a two-second
+presence interval and six-second stale threshold. Linux's current boot ID is
+hashed into a non-cryptographic restart epoch. Discovery initializes and may
+remain resident with zero remote participants; observations never create
+relationships, connections, attachments, capabilities, trust, or authority.
+Neither mode is production-secure, authenticated, routed, persistent, private
+ACS behavior, or a public ACS C ABI.
 
 ## Current kernel relationship
 
@@ -180,7 +190,17 @@ runtime, ACS, and assembly components plus P0/P01-specific validation tooling.
 Earlier checkpoints recorded passing CPU-only, CUDA-enabled, repeated stress,
 strict-warning, sanitizer, and QEMU runs on their documented hosts.
 
-The current DEV-003C validation on the development host rebuilt the canonical
+The ACS-001A validation on the development host passed all nine focused public
+ACS tests and the focused Python profile/controller tests. A three-node lab
+booted with zero configured remote peers: all three reached scoped runtime
+readiness, remained under PID 1, and directly observed both others. After
+node-003 stopped, node-001 and node-002 remained ready and marked it stale;
+after restart both emitted stale-to-observed rediscovery and node-003 observed
+both survivors. The existing five-node explicit mode then retained 4/4 valid
+peers per node (20/20 directed paths), and all five passed CPU activation,
+resident transition, and post-transition probes.
+
+The earlier DEV-003C validation on the development host rebuilt the canonical
 image serially, passed all 39 host CTest cases and the strict-warning build,
 reconfirmed the direct BIOS conformance boot and poweroff path, and exercised
 all five managed guests in resident lab mode. All five reached scoped runtime
@@ -247,12 +267,14 @@ behavior, remote listener, per-node symbols, or persistent debugger state.
 launchers. The tracked `node-001` through `node-005` profiles declare firmware,
 explicit socket/core/thread topology and vCPU count, memory, unique loopback
 debug settings, deterministic local MAC and
-IPv4 addresses, and the complete peer set. The controller can list, inspect,
+IPv4 addresses, a default ACS mode, and the explicit conformance peer set. The controller can list, inspect,
 start, stop, restart, and observe individual instances, and can start, stop, or
 restart the profile set concurrently; generated state and node-local
 serial/JSONL logs remain disposable under `build/virtual/NODE/`. Stop
 operations require a recorded PID plus matching process-start and QEMU command
-identity, preventing a stale PID from authorizing a signal. Status reports
+identity, preventing a stale PID from authorizing a signal. `--acs-mode
+discovery` passes no remote peers; `--acs-mode explicit` retains the complete
+peer set and its original SMBIOS v1 representation. Status reports
 observed process and structured boot/runtime evidence only. `runtime-status`
 and `runtime-summary` require explicit transition, readiness, resident CPU/ACS,
 and post-transition-probe records; they do not infer missing health. The guests
@@ -267,13 +289,20 @@ addresses `10.77.0.1/24` through `10.77.0.5/24`, UDP port `39001`, and attempts
 the complete 20-direction matrix. DMI, MAC, and IP
 data select only this declared development profile and do not prove logical
 identity, trust, or authority. `node_lab.py acs-events NODE` surfaces the
-resulting public evidence without making a policy judgment. This remains a
-disposable reference transport, not a cluster or ACS control plane.
+resulting public evidence without making a policy judgment, while
+`node_lab.py discovery NODE` filters bounded discovery transitions. The guest
+discovery group and port are distinct from both the host-side QEMU Ethernet
+multicast mechanism and the explicit ACS unicast port. These remain disposable
+reference transports, not a cluster or ACS control plane.
 
-Managed start/restart commands accept explicit `conformance` and `lab` modes;
+Managed start/restart commands accept explicit `conformance` and `lab` modes
+and explicit/discovery ACS modes;
 conformance remains the default. Both use the one canonical ISO. Lab mode keeps
-CPU and ACS children in their original manifest slots under permanent PID 1
-supervision after a pure bounded transition evaluation. An unexpected
+CPU and ACS children under permanent PID 1 supervision after a pure bounded
+transition evaluation. ACS now launches in `platform_observation` after local
+identity/filesystem readiness, before CPU assembly and activation; discovery
+mode marks local readiness immediately after its socket and multicast
+membership are active. An unexpected
 essential-child exit is observed as runtime degradation. The host controller's
 normal stop remains exact-identity QEMU termination: PID 1 contains a bounded
 signal-driven resident shutdown path, but this phase adds no guest control
@@ -301,8 +330,8 @@ subsystem work before integration. See `AGENTS.md` for branch rules.
 - CPU affinity/NUMA orchestration and typed CPU kernel execution;
 - general GPU payload and memory-lease execution;
 - HailoRT, IMX500, AMD GPU, and Xeon Phi production backends;
-- production ACS transport, discovery, authentication, secure sessions,
-  persistence, and reservation;
+- production ACS transport, authenticated or wide-area discovery, secure
+  sessions, persistence, and reservation;
 - MEM persistence and IMM implementation;
 - production BOOT acceptance, installation, recovery, and media workflows;
 - real-hardware coverage across supported ARM and heterogeneous targets;

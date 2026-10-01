@@ -22,7 +22,8 @@ replace the legacy robot loop.
 - service lifecycle, adaptive-state, architecture-shadow, and proposal-ABI
   foundations;
 - bounded public ACS descriptors, registry, lifecycle state, and pure admission
-  evaluation, plus an isolated five-node multi-peer reference transport;
+  evaluation, plus bounded volatile local-participant discovery and an isolated
+  five-node explicit-peer reference transport;
 - a static C11 permanent PID 1 micro-OS, P01 candidate-image tooling, a
   bounded first-boot CPU discovery/assembly/activation proof, and an explicit
   current-boot resident lab mode that supervises the selected CPU runtime and
@@ -46,7 +47,7 @@ for the present baseline and validation caveats.
 ### Planned or incomplete
 
 Production scheduling, general CPU/GPU kernel dispatch, production-secure ACS
-transport, ACS discovery and persistence, MEM persistence, IMM implementation,
+transport, authenticated/wide-area ACS discovery and persistence, MEM persistence, IMM implementation,
 production assembly authority, installation/recovery, and migration away from
 the legacy robot loop are not complete.
 
@@ -199,6 +200,7 @@ launchers without replacing their boot contract:
 ```sh
 ./python/node_lab.py list
 ./python/node_lab.py start-all --mode lab
+./python/node_lab.py start node-001 --mode lab --acs-mode discovery
 ./python/node_lab.py group-status
 ./python/node_lab.py runtime-summary
 ./python/node_lab.py runtime-status node-001
@@ -206,6 +208,7 @@ launchers without replacing their boot contract:
 ./python/node_lab.py start node-001
 ./python/node_lab.py events node-001
 ./python/node_lab.py acs-events node-001
+./python/node_lab.py discovery node-001
 ./python/node_lab.py cpu-info node-001
 ./python/node_lab.py cpu-summary
 ./python/node_lab.py cpu-runtime node-001
@@ -216,7 +219,7 @@ launchers without replacing their boot contract:
 ./python/node_lab.py stop-all
 ```
 
-`restart`, `acs-events`, `cpu-info`, `cpu-summary`, `cpu-runtime`,
+`restart`, `acs-events`, `discovery`, `cpu-info`, `cpu-summary`, `cpu-runtime`,
 `cpu-runtime-summary`, `runtime-status`, `runtime-summary`, and `debug-info`
 are also available, and
 `start NODE --debug` reuses
@@ -232,22 +235,30 @@ worker count and deterministic per-worker probe result. The five guests also hav
 deterministic locally administered MAC and IPv4 addresses on one QEMU datagram
 multicast Ethernet segment confined to host loopback. It has no NAT, host bridge, TAP,
 internet access, or host-LAN listener. Managed guests use only the fixed
-development range `10.77.0.1/24` through `10.77.0.5/24` and UDP port `39001`
-to exchange bounded `public.transport.conformance` signals. All 20 directed paths
+development range `10.77.0.1/24` through `10.77.0.5/24`. Explicit mode uses UDP
+port `39001` to exchange bounded `public.transport.conformance` signals. All 20 directed paths
 are structurally validated against public ACS registry, lifecycle, admission,
 peer-specific binding, attachment, correlation, and envelope evidence. `start-all`
 and `restart-all` launch concurrently; `group-status` reports success only from
-structured peer validation records. This unencrypted reference path is
-isolated development/conformance transport, not peer discovery, authentication,
-a production-secure session, a cluster, or a private ACS control plane. The
-direct build, normal QEMU, and debug launchers remain independently usable and
-retain their no-network default.
+structured peer validation records. Discovery mode instead passes zero remote
+peers and uses guest-local multicast `239.77.0.1:39002` for bounded presence,
+response, and participant-hint traffic. Observations are volatile, expire to
+stale, and create no relationship, connection, attachment, trust, capability,
+or authority. Both unencrypted paths are isolated development transports, not
+authentication, a production-secure session, a cluster, or a private ACS
+control plane. The direct build, normal QEMU, and debug launchers remain
+independently usable and retain their no-network default.
+
+ACS-001A adds no trust scoring, operator authority, source or artifact
+propagation, mesh routing, or persistent discovery state.
 
 Managed `start`, `restart`, `start-all`, and `restart-all` accept an explicit
-`--mode conformance` or `--mode lab`; conformance remains the default. Lab mode
+`--mode conformance` or `--mode lab` and an optional `--acs-mode explicit` or
+`--acs-mode discovery`; profile defaults remain explicit. Lab mode
 selects resident behavior through bounded QEMU platform metadata while the
 same `build/artifacts/node-current.iso` is used in both modes. After the
-initial CPU probe and complete ACS exchange, PID 1 evaluates a separate
+initial CPU probe and ACS local readiness (plus complete configured exchange in
+explicit mode), PID 1 evaluates a separate
 transition gate, reports scoped runtime readiness, requests a second CPU work
 probe, and continues supervising the live CPU worker and ACS socket.
 `runtime-status` and `runtime-summary` report only observed structured records

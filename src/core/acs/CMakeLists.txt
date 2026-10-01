@@ -1,4 +1,6 @@
 add_library(prometheus_acs STATIC
+    acs_discovery.cpp
+    acs_discovery_wire.cpp
     acs_registry.cpp
     acs_lifecycle.cpp
     acs_admission.cpp

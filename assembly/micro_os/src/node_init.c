@@ -937,6 +937,37 @@ static int read_cpu_decision(const struct supervisor *supervisor) {
            strstr(content, "\nprofile=avx2\n") != NULL;
 }
 
+static int read_acs_mode(const struct supervisor *supervisor) {
+    char path[2 * NODE_P01_MAX_PATH_BYTES];
+    char content[64];
+    struct stat status;
+    const char *root = supervisor->host_mode ? supervisor->host_root : "";
+    int length = snprintf(
+        path, sizeof(path),
+        "%s/run/node-p01-results/acs_reference_transport.mode", root);
+    int descriptor;
+    ssize_t count;
+    if (length < 0 || (size_t)length >= sizeof(path)) return 0;
+    descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return 0;
+    if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode) ||
+        status.st_size <= 0 || status.st_size >= (off_t)sizeof(content)) {
+        (void)close(descriptor);
+        return 0;
+    }
+    count = read(descriptor, content, (size_t)status.st_size);
+    (void)close(descriptor);
+    if (count != status.st_size) return 0;
+    content[count] = '\0';
+    if (strcmp(content, "schema=node.acs-mode.v1\nmode=discovery\n") == 0) {
+        return 1;
+    }
+    if (strcmp(content, "schema=node.acs-mode.v1\nmode=explicit\n") == 0) {
+        return 2;
+    }
+    return 0;
+}
+
 static int resident_service_alive(const struct supervisor *supervisor,
                                   int index) {
     return index >= 0 && supervisor->runtime[(size_t)index].resident_ready &&
@@ -1007,21 +1038,25 @@ static int run_resident_supervision(struct supervisor *supervisor,
     enum node_runtime_transition_code transition;
     int cpu_alive;
     int acs_alive;
+    int acs_mode;
     uint64_t probe_deadline;
 
     (void)memset(&evidence, 0, sizeof(evidence));
     cpu_alive = resident_service_alive(supervisor, cpu_index);
     acs_alive = resident_service_alive(supervisor, acs_index);
+    acs_mode = read_acs_mode(supervisor);
     evidence.required_startup_complete = (uint8_t)required_scope_complete;
     evidence.cpu_decision_compatible = (uint8_t)read_cpu_decision(supervisor);
     evidence.cpu_runtime_required = evidence.cpu_decision_compatible;
     evidence.cpu_runtime_validated = (uint8_t)cpu_alive;
     evidence.cpu_runtime_activated = (uint8_t)cpu_alive;
     evidence.cpu_initial_probe_passed = (uint8_t)cpu_alive;
-    evidence.acs_initialized = (uint8_t)acs_alive;
-    evidence.acs_exchange_complete = (uint8_t)acs_alive;
+    evidence.acs_initialized = (uint8_t)(acs_alive && acs_mode != 0);
+    evidence.acs_peer_exchange_required = (uint8_t)(acs_mode == 2);
+    evidence.acs_exchange_complete = (uint8_t)(acs_alive && acs_mode == 2);
     evidence.evidence_complete = (uint8_t)(
-        evidence.cpu_decision_compatible && cpu_alive && acs_alive);
+        evidence.cpu_decision_compatible && cpu_alive && acs_alive &&
+        acs_mode != 0);
 
     emit_json("runtime_transition_requested", NODE_P01_BOOT_IDENTITY,
               "transition_pending",

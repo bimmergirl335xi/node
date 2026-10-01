@@ -49,6 +49,7 @@ PROFILE_KEYS = {
     "network_multicast_address",
     "network_multicast_port",
     "network_local_address",
+    "acs_mode",
     "acs_peers",
 }
 NODE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,31}\Z")
@@ -90,6 +91,7 @@ class NodeProfile:
     network_multicast_address: str
     network_multicast_port: int
     network_local_address: str
+    acs_mode: str
     acs_peers: tuple[str, ...]
 
 
@@ -169,15 +171,15 @@ def cpu_discovery_counts_consistent(
     return expected == configured and 1 <= allowed <= online <= configured
 
 
-def load_profiles() -> dict[str, NodeProfile]:
+def load_profiles(profile_root: Path = PROFILE_ROOT) -> dict[str, NodeProfile]:
     try:
         files = sorted(
-            itertools.islice(PROFILE_ROOT.glob("*.json"), MAX_PROFILES + 1)
+            itertools.islice(profile_root.glob("*.json"), MAX_PROFILES + 1)
         )
     except OSError as error:
         raise LabError(f"cannot enumerate virtual-node profiles: {error}") from error
     if not files:
-        raise LabError(f"no virtual-node profiles found under {PROFILE_ROOT}")
+        raise LabError(f"no virtual-node profiles found under {profile_root}")
     if len(files) > MAX_PROFILES:
         raise LabError(f"virtual-node profile count exceeds {MAX_PROFILES}")
 
@@ -194,6 +196,7 @@ def load_profiles() -> dict[str, NodeProfile]:
         ipv4_address = raw["ipv4_address"]
         multicast_address = raw["network_multicast_address"]
         local_address = raw["network_local_address"]
+        acs_mode = raw["acs_mode"]
         acs_peers = raw["acs_peers"]
         if not isinstance(node_id, str) or NODE_ID_PATTERN.fullmatch(node_id) is None:
             raise LabError(f"profile node_id is invalid: {path}")
@@ -219,9 +222,10 @@ def load_profiles() -> dict[str, NodeProfile]:
             raise LabError(f"profile network_multicast_address must be multicast: {path}")
         if not parsed_local.is_loopback:
             raise LabError(f"profile network_local_address must be loopback: {path}")
+        if acs_mode not in ("explicit", "discovery"):
+            raise LabError(f"profile acs_mode must be explicit or discovery: {path}")
         if (
             not isinstance(acs_peers, list)
-            or not acs_peers
             or len(acs_peers) > MAX_PEERS
             or any(
                 not isinstance(peer, str)
@@ -254,6 +258,7 @@ def load_profiles() -> dict[str, NodeProfile]:
                 raw["network_multicast_port"], "network_multicast_port", 1024, 65535
             ),
             network_local_address=str(parsed_local),
+            acs_mode=acs_mode,
             acs_peers=tuple(acs_peers),
         )
         if node_id in profiles:
@@ -277,9 +282,17 @@ def load_profiles() -> dict[str, NodeProfile]:
         raise LabError("virtual-node profiles must declare one shared network shape")
     expected = set(profiles)
     for profile in profiles.values():
-        if set(profile.acs_peers) != expected - {profile.node_id}:
+        unknown_peers = set(profile.acs_peers) - expected
+        if unknown_peers:
             raise LabError(
-                f"virtual-node ACS peers must name every other profile: {profile.node_id}"
+                f"virtual-node ACS peers name unknown profiles: {profile.node_id}"
+            )
+        if profile.acs_mode == "explicit" and (
+            not profile.acs_peers or
+            set(profile.acs_peers) != expected - {profile.node_id}
+        ):
+            raise LabError(
+                f"explicit-mode ACS peers must name every other profile: {profile.node_id}"
             )
     return profiles
 
@@ -450,17 +463,27 @@ def profile_peer_encoding(profile: NodeProfile, profiles: dict[str, NodeProfile]
 
 
 def profile_peer_parts(
-    profile: NodeProfile, profiles: dict[str, NodeProfile]
+    profile: NodeProfile, profiles: dict[str, NodeProfile], acs_mode: str
 ) -> tuple[str, str]:
+    if acs_mode == "discovery":
+        return "", ""
     entries = profile_peer_encoding(profile, profiles).split(";")
     midpoint = (len(entries) + 1) // 2
     return ";".join(entries[:midpoint]), ";".join(entries[midpoint:])
 
 
 def smbios_argument(
-    profile: NodeProfile, profiles: dict[str, NodeProfile], mode: str
+    profile: NodeProfile, profiles: dict[str, NodeProfile], mode: str,
+    acs_mode: str,
 ) -> str:
-    peers_a, peers_b = profile_peer_parts(profile, profiles)
+    peers_a, peers_b = profile_peer_parts(profile, profiles, acs_mode)
+    if acs_mode == "discovery":
+        return (
+            f"type=1,manufacturer=none,product=Node-Development-VM-{mode},"
+            f"version=acs-discovery-v1-port-{profile.acs_port},"
+            f"serial={profile.node_id},sku={profile.ipv4_address.split('/', 1)[0]},"
+            "family=none"
+        )
     return (
         f"type=1,manufacturer={peers_a},product=Node-Development-VM-{mode},"
         f"version=acs-profile-v1-port-{profile.acs_port},"
@@ -479,8 +502,9 @@ def matches_managed_qemu(
     netdev, device = network_arguments(profile)
     profiles = load_profiles()
     smbios_values = tuple(
-        smbios_argument(profile, profiles, mode)
+        smbios_argument(profile, profiles, mode, acs_mode)
         for mode in ("conformance", "lab")
+        for acs_mode in ("explicit", "discovery")
     )
     return (
         executable.startswith("qemu-system-")
@@ -648,10 +672,14 @@ def launch_command(profile: NodeProfile, debug: bool) -> list[str]:
 
 def start_node(
     profile: NodeProfile, force_debug: bool, *, emit_output: bool = True,
-    known_iso_sha: str | None = None, mode: str = "conformance"
+    known_iso_sha: str | None = None, mode: str = "conformance",
+    acs_mode: str | None = None,
 ) -> dict[str, Any]:
     if mode not in ("conformance", "lab"):
         raise LabError("node mode must be conformance or lab")
+    selected_acs_mode = profile.acs_mode if acs_mode is None else acs_mode
+    if selected_acs_mode not in ("explicit", "discovery"):
+        raise LabError("ACS mode must be explicit or discovery")
     paths = instance_paths(profile)
     with InstanceLock(paths):
         iso_sha = known_iso_sha if known_iso_sha is not None else validate_iso()
@@ -697,11 +725,14 @@ def start_node(
             "NODE_QEMU_NETWORK_LOCAL_ADDRESS",
             "NODE_QEMU_ACS_IPV4_ADDRESS",
             "NODE_QEMU_ACS_UDP_PORT",
+            "NODE_QEMU_ACS_MODE",
             "NODE_QEMU_ACS_PEERS_A",
             "NODE_QEMU_ACS_PEERS_B",
         ):
             environment.pop(name, None)
-        peers_a, peers_b = profile_peer_parts(profile, load_profiles())
+        peers_a, peers_b = profile_peer_parts(
+            profile, load_profiles(), selected_acs_mode
+        )
         environment.update(
             {
                 "NODE_QEMU_LOG_DIR": str(paths.log_dir),
@@ -722,6 +753,7 @@ def start_node(
                 "NODE_QEMU_NETWORK_LOCAL_ADDRESS": profile.network_local_address,
                 "NODE_QEMU_ACS_IPV4_ADDRESS": profile.ipv4_address.split("/", 1)[0],
                 "NODE_QEMU_ACS_UDP_PORT": str(profile.acs_port),
+                "NODE_QEMU_ACS_MODE": selected_acs_mode,
                 "NODE_QEMU_ACS_PEERS_A": peers_a,
                 "NODE_QEMU_ACS_PEERS_B": peers_b,
             }
@@ -763,10 +795,13 @@ def start_node(
             "cpu_threads": profile.cpu_threads,
             "memory_mb": profile.memory_mb,
             "mode": mode,
+            "acs_mode": selected_acs_mode,
             "network_backend": "loopback_multicast_dgram_lan",
             "network_multicast_address": profile.network_multicast_address,
             "network_multicast_port": profile.network_multicast_port,
-            "acs_peers": list(profile.acs_peers),
+            "acs_peers": (
+                list(profile.acs_peers) if selected_acs_mode == "explicit" else []
+            ),
             "mac_address": profile.mac_address,
             "debug_enabled": debug,
             "gdb_endpoint": f"127.0.0.1:{profile.gdb_port}" if debug else None,
@@ -835,13 +870,16 @@ def start_node(
             "qemu_pid": qemu.pid,
             "firmware": profile.firmware,
             "mode": mode,
+            "acs_mode": selected_acs_mode,
             "vcpus": profile.vcpus,
             "cpu_sockets": profile.cpu_sockets,
             "cpu_cores": profile.cpu_cores,
             "cpu_threads": profile.cpu_threads,
             "debug_enabled": debug,
             "network_attachment": network_attachment(profile, qemu),
-            "acs_peers": list(profile.acs_peers),
+            "acs_peers": (
+                list(profile.acs_peers) if selected_acs_mode == "explicit" else []
+            ),
             "mac_address": profile.mac_address,
             "acs_reference_address": profile.ipv4_address,
             "acs_reference_udp_port": profile.acs_port,
@@ -856,7 +894,7 @@ def start_node(
 def print_start_result(result: dict[str, Any]) -> None:
     print(f"started: {result['node_id']}")
     for key in (
-        "qemu_pid", "firmware", "mode", "vcpus", "cpu_sockets", "cpu_cores",
+        "qemu_pid", "firmware", "mode", "acs_mode", "vcpus", "cpu_sockets", "cpu_cores",
         "cpu_threads", "debug_enabled", "network_attachment",
         "acs_peers", "mac_address", "acs_reference_address",
         "acs_reference_udp_port", "serial_log", "event_log"
@@ -1046,6 +1084,8 @@ def print_status(profile: NodeProfile) -> None:
         print(f"state_detail: {detail}")
         print(f"qemu_pid: {info.pid if info is not None else '-'}")
         print(f"mode: {str((state or {}).get('mode', 'unknown'))[:32]}")
+        selected_acs_mode = str((state or {}).get("acs_mode", profile.acs_mode))[:32]
+        print(f"acs_mode: {selected_acs_mode}")
         print(f"firmware: {profile.firmware}")
         print(f"vcpus: {profile.vcpus}")
         print(f"cpu_sockets: {profile.cpu_sockets}")
@@ -1060,7 +1100,10 @@ def print_status(profile: NodeProfile) -> None:
         print(f"boot_state: {final}")
         print(f"network_attachment: {network_attachment(profile, info)}")
         print("network_backend: loopback_multicast_dgram_lan")
-        print(f"acs_peers: {','.join(profile.acs_peers)}")
+        selected_peers = (
+            profile.acs_peers if selected_acs_mode == "explicit" else ()
+        )
+        print(f"acs_peers: {','.join(selected_peers)}")
         print(f"mac_address: {profile.mac_address}")
         print(f"acs_reference_address: {profile.ipv4_address}")
         print(f"acs_reference_udp_port: {profile.acs_port}")
@@ -1072,7 +1115,7 @@ def print_status(profile: NodeProfile) -> None:
 
 def print_list() -> None:
     profiles = load_profiles()
-    print("NODE ID\tSTATE\tPID\tMODE\tFIRMWARE\tLAST BOOT RESULT\tNETWORK")
+    print("NODE ID\tSTATE\tPID\tMODE\tACS MODE\tFIRMWARE\tLAST BOOT RESULT\tNETWORK")
     for node_id in sorted(profiles):
         profile = profiles[node_id]
         paths = instance_paths(profile)
@@ -1083,13 +1126,15 @@ def print_list() -> None:
             f"{node_id}\t{'running' if info else 'stopped'}\t"
             f"{info.pid if info else '-'}\t"
             f"{str((state or {}).get('mode', 'unknown'))[:32]}\t"
+            f"{str((state or {}).get('acs_mode', profile.acs_mode))[:32]}\t"
             f"{profile.firmware}\t{final}\t"
             f"{network_attachment(profile, info)}"
         )
 
 
 def run_group_operation(
-    operation: str, force_debug: bool = False, mode: str = "conformance"
+    operation: str, force_debug: bool = False, mode: str = "conformance",
+    acs_mode: str | None = None,
 ) -> None:
     profiles = load_profiles()
     ordered = [profiles[node_id] for node_id in sorted(profiles)]
@@ -1100,6 +1145,7 @@ def run_group_operation(
             return start_node(
                 profile, force_debug, emit_output=False, known_iso_sha=iso_sha,
                 mode=mode,
+                acs_mode=acs_mode,
             )
         if operation == "stop":
             return stop_node(profile, emit_output=False)
@@ -1107,6 +1153,7 @@ def run_group_operation(
         return start_node(
             profile, force_debug, emit_output=False, known_iso_sha=iso_sha,
             mode=mode,
+            acs_mode=acs_mode,
         )
 
     results: dict[str, dict[str, Any]] = {}
@@ -1212,6 +1259,30 @@ def print_acs_events(profile: NodeProfile, limit: int) -> None:
         print(f"MALFORMED {message}", file=sys.stderr)
     if malformed:
         raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+
+
+def print_discovery(profile: NodeProfile) -> None:
+    events, malformed = read_events(instance_paths(profile))
+    if malformed:
+        raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+    selected = [
+        event for event in events
+        if event.get("record") in {
+            "acs_discovery_started",
+            "acs_discovery_ready",
+            "acs_participant_observed",
+            "acs_participant_hint_received",
+            "acs_participant_stale",
+            "acs_participant_rediscovered",
+            "acs_discovery_conflict",
+            "acs_discovery_capacity_rejected",
+            "acs_discovery_summary",
+        }
+    ]
+    if not selected:
+        raise LabError("ACS discovery evidence is not available")
+    for event in selected:
+        print(json.dumps(event, separators=(",", ":"), sort_keys=True))
 
 
 def cpu_evidence_summary(profile: NodeProfile) -> dict[str, str]:
@@ -1579,6 +1650,7 @@ def parser() -> argparse.ArgumentParser:
     start_all.add_argument(
         "--mode", choices=("conformance", "lab"), default="conformance"
     )
+    start_all.add_argument("--acs-mode", choices=("explicit", "discovery"))
     restart_all = commands.add_parser(
         "restart-all", help="concurrently restart every managed node"
     )
@@ -1586,6 +1658,7 @@ def parser() -> argparse.ArgumentParser:
     restart_all.add_argument(
         "--mode", choices=("conformance", "lab"), default="conformance"
     )
+    restart_all.add_argument("--acs-mode", choices=("explicit", "discovery"))
     for name in (
         "status", "stop", "debug-info", "cpu-info", "cpu-runtime",
         "runtime-status",
@@ -1599,6 +1672,7 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument(
             "--mode", choices=("conformance", "lab"), default="conformance"
         )
+        command.add_argument("--acs-mode", choices=("explicit", "discovery"))
     events = commands.add_parser("events")
     events.add_argument("node_id")
     events.add_argument(
@@ -1609,6 +1683,8 @@ def parser() -> argparse.ArgumentParser:
     acs_events.add_argument(
         "--limit", type=lambda value: bounded_count(value, MAX_EVENT_LINES), default=20
     )
+    discovery = commands.add_parser("discovery")
+    discovery.add_argument("node_id")
     serial = commands.add_parser("serial")
     serial.add_argument("node_id")
     serial.add_argument(
@@ -1636,28 +1712,30 @@ def main(argv: list[str] | None = None) -> int:
             print_runtime_summary()
             return 0
         if args.command == "start-all":
-            run_group_operation("start", args.debug, args.mode)
+            run_group_operation("start", args.debug, args.mode, args.acs_mode)
             return 0
         if args.command == "stop-all":
             run_group_operation("stop")
             return 0
         if args.command == "restart-all":
-            run_group_operation("restart", args.debug, args.mode)
+            run_group_operation("restart", args.debug, args.mode, args.acs_mode)
             return 0
         profile = select_profile(args.node_id)
         if args.command == "status":
             print_status(profile)
         elif args.command == "start":
-            start_node(profile, args.debug, mode=args.mode)
+            start_node(profile, args.debug, mode=args.mode, acs_mode=args.acs_mode)
         elif args.command == "stop":
             stop_node(profile)
         elif args.command == "restart":
             stop_node(profile, allow_stopped=True)
-            start_node(profile, args.debug, mode=args.mode)
+            start_node(profile, args.debug, mode=args.mode, acs_mode=args.acs_mode)
         elif args.command == "events":
             print_events(profile, args.limit)
         elif args.command == "acs-events":
             print_acs_events(profile, args.limit)
+        elif args.command == "discovery":
+            print_discovery(profile)
         elif args.command == "cpu-info":
             print_cpu_info(profile)
         elif args.command == "cpu-runtime":

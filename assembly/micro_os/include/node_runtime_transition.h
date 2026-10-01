@@ -28,6 +28,7 @@ struct node_runtime_transition_evidence {
     uint8_t cpu_runtime_activated;
     uint8_t cpu_initial_probe_passed;
     uint8_t acs_initialized;
+    uint8_t acs_peer_exchange_required;
     uint8_t acs_exchange_complete;
     uint8_t evidence_complete;
 };

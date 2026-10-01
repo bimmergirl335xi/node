@@ -103,14 +103,17 @@ BOOT validation, current-boot activation, probe success, and global readiness
 remain separate states. No runtime is installed or retained across reboot.
 
 `src/acs_reference_service.cpp` builds a separate static development service.
-For the five explicitly managed lab profiles only, it configures `eth0` with a
-fixed private address and exchanges a versioned, bounded public ACS conformance
-signal over UDP. It exercises the public registry, lifecycle, admission,
+Explicit mode retains the five-node configured-peer conformance exchange over
+UDP port 39001 and exercises the public registry, lifecycle, admission,
 binding, attachment, envelope, wire-validation, and structured-evidence paths.
-An unmanaged or single-node boot reports transport unavailability and retains
-the established P01 terminal behavior. This isolated reference mechanism is
-not peer discovery, authentication, a secure session, private ACS, or a
-production provider.
+Discovery mode requires no remote peer configuration and uses guest-visible
+IPv4 multicast `239.77.0.1:39002` for bounded presence, response, and hint
+messages. Its volatile observation store distinguishes direct and hinted
+participants, stale and conflict states, and never creates canonical
+relationships, connections, attachments, capabilities, or authority. The
+current-boot epoch is derived from Linux's boot ID and is not authentication.
+Both modes remain isolated, unencrypted reference mechanisms rather than a
+production-secure session, private ACS, routing layer, or production provider.
 
 ## Host validation
 

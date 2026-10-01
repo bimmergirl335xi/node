@@ -38,6 +38,7 @@ def profile(node_id: str, port: int) -> node_lab.NodeProfile:
         network_multicast_address="230.0.0.1",
         network_multicast_port=39000,
         network_local_address="127.0.0.1",
+        acs_mode="explicit",
         acs_peers=(),
     )
 

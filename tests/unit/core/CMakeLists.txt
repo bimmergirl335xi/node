@@ -128,3 +128,13 @@ add_executable(test_acs_reference_wire test_acs_reference_wire.cpp)
 target_link_libraries(test_acs_reference_wire PRIVATE prometheus_acs)
 target_compile_features(test_acs_reference_wire PRIVATE cxx_std_17)
 add_test(NAME prometheus_acs_reference_wire COMMAND test_acs_reference_wire)
+
+add_executable(test_acs_discovery test_acs_discovery.cpp)
+target_link_libraries(test_acs_discovery PRIVATE prometheus_acs)
+target_compile_features(test_acs_discovery PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_discovery COMMAND test_acs_discovery)
+
+add_executable(test_acs_discovery_wire test_acs_discovery_wire.cpp)
+target_link_libraries(test_acs_discovery_wire PRIVATE prometheus_acs)
+target_compile_features(test_acs_discovery_wire PRIVATE cxx_std_17)
+add_test(NAME prometheus_acs_discovery_wire COMMAND test_acs_discovery_wire)

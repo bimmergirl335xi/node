@@ -22,7 +22,9 @@ enum node_runtime_transition_code node_runtime_transition_evaluate(
     if (!evidence->cpu_initial_probe_passed) {
         return NODE_RUNTIME_CPU_INITIAL_PROBE_FAILED;
     }
-    if (!evidence->acs_initialized || !evidence->acs_exchange_complete) {
+    if (!evidence->acs_initialized ||
+        (evidence->acs_peer_exchange_required &&
+         !evidence->acs_exchange_complete)) {
         return NODE_RUNTIME_ACS_NOT_INITIALIZED;
     }
     return NODE_RUNTIME_TRANSITION_ACCEPTED;

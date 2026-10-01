@@ -28,6 +28,7 @@ NETWORK_MULTICAST_PORT=${NODE_QEMU_NETWORK_MULTICAST_PORT:-}
 NETWORK_LOCAL_ADDRESS=${NODE_QEMU_NETWORK_LOCAL_ADDRESS:-}
 ACS_IPV4_ADDRESS=${NODE_QEMU_ACS_IPV4_ADDRESS:-}
 ACS_UDP_PORT=${NODE_QEMU_ACS_UDP_PORT:-}
+ACS_MODE=${NODE_QEMU_ACS_MODE:-explicit}
 ACS_PEERS_A=${NODE_QEMU_ACS_PEERS_A:-}
 ACS_PEERS_B=${NODE_QEMU_ACS_PEERS_B:-}
 FIRMWARE=bios
@@ -110,6 +111,8 @@ done
     fail 'NODE_QEMU_NODE_ID must be a lowercase identifier of at most 32 characters'
 [[ ${NETWORK_ENABLED} == 0 || ${NETWORK_ENABLED} == 1 ]] ||
     fail 'NODE_QEMU_NETWORK_ENABLED must be 0 or 1'
+[[ ${ACS_MODE} == explicit || ${ACS_MODE} == discovery ]] ||
+    fail 'NODE_QEMU_ACS_MODE must be explicit or discovery'
 case "${LOG_DIR}" in
     "${BUILD_ROOT}"/*) ;;
     *) fail 'NODE_QEMU_LOG_DIR must resolve beneath the repository build directory' ;;
@@ -130,12 +133,17 @@ if [[ ${NETWORK_ENABLED} == 1 ]]; then
             (( port_value >= 1024 && port_value <= 65535 )) ||
             fail 'managed network ports must be integers from 1024 through 65535'
     done
-    for peer_part in "${ACS_PEERS_A}" "${ACS_PEERS_B}"; do
-        [[ -n ${peer_part} && ${#peer_part} -le 63 && ${peer_part} != *,* ]] ||
-            fail 'managed ACS peer profile parts must be nonempty and at most 63 bytes'
-        [[ ${peer_part} =~ ^[a-z0-9-]+@10\.77\.0\.[0-9]+(\;[a-z0-9-]+@10\.77\.0\.[0-9]+)*$ ]] ||
-            fail 'managed ACS peer profile parts must contain node@IPv4 entries'
-    done
+    if [[ ${ACS_MODE} == explicit ]]; then
+        for peer_part in "${ACS_PEERS_A}" "${ACS_PEERS_B}"; do
+            [[ -n ${peer_part} && ${#peer_part} -le 63 && ${peer_part} != *,* ]] ||
+                fail 'explicit ACS peer profile parts must be nonempty and at most 63 bytes'
+            [[ ${peer_part} =~ ^[a-z0-9-]+@10\.77\.0\.[0-9]+(\;[a-z0-9-]+@10\.77\.0\.[0-9]+)*$ ]] ||
+                fail 'explicit ACS peer profile parts must contain node@IPv4 entries'
+        done
+    else
+        [[ -z ${ACS_PEERS_A} && -z ${ACS_PEERS_B} ]] ||
+            fail 'discovery ACS mode must not receive configured remote peers'
+    fi
 fi
 if [[ ${NODE_MODE} == lab && ( -z ${NODE_ID} || ${NETWORK_ENABLED} != 1 ) ]]; then
     fail 'lab mode requires an explicit managed node identity and network profile'
@@ -194,11 +202,18 @@ else
 fi
 
 if [[ -n ${NODE_ID} ]]; then
-    smbios_profile="type=1,manufacturer=${ACS_PEERS_A}"
-    smbios_profile+=",product=Node-Development-VM-${NODE_MODE}"
-    smbios_profile+=",version=acs-profile-v1-port-${ACS_UDP_PORT}"
-    smbios_profile+=",serial=${NODE_ID},sku=${ACS_IPV4_ADDRESS}"
-    smbios_profile+=",family=${ACS_PEERS_B}"
+    if [[ ${ACS_MODE} == explicit ]]; then
+        smbios_profile="type=1,manufacturer=${ACS_PEERS_A}"
+        smbios_profile+=",product=Node-Development-VM-${NODE_MODE}"
+        smbios_profile+=",version=acs-profile-v1-port-${ACS_UDP_PORT}"
+        smbios_profile+=",serial=${NODE_ID},sku=${ACS_IPV4_ADDRESS}"
+        smbios_profile+=",family=${ACS_PEERS_B}"
+    else
+        smbios_profile="type=1,manufacturer=none"
+        smbios_profile+=",product=Node-Development-VM-${NODE_MODE}"
+        smbios_profile+=",version=acs-discovery-v1-port-${ACS_UDP_PORT}"
+        smbios_profile+=",serial=${NODE_ID},sku=${ACS_IPV4_ADDRESS},family=none"
+    fi
     qemu_command+=(
         -name "guest=${NODE_ID},process=${NODE_ID}"
         -smbios "${smbios_profile}"
@@ -268,7 +283,12 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
         printf 'network_local_address: %s\n' "${NETWORK_LOCAL_ADDRESS}"
         printf 'acs_ipv4_address: %s\n' "${ACS_IPV4_ADDRESS}"
         printf 'acs_udp_port: %s\n' "${ACS_UDP_PORT}"
-        printf 'acs_peers: %s;%s\n' "${ACS_PEERS_A}" "${ACS_PEERS_B}"
+        printf 'acs_mode: %s\n' "${ACS_MODE}"
+        if [[ ${ACS_MODE} == explicit ]]; then
+            printf 'acs_peers: %s;%s\n' "${ACS_PEERS_A}" "${ACS_PEERS_B}"
+        else
+            printf 'acs_peers:\n'
+        fi
     else
         printf 'network_backend: none\n'
     fi

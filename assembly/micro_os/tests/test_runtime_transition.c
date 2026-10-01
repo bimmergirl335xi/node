@@ -21,7 +21,7 @@ static void expect_transition(
 
 int main(void) {
     struct node_runtime_transition_evidence evidence = {
-        1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U
+        1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U, 1U
     };
     expect_transition("complete evidence", evidence,
                       NODE_RUNTIME_TRANSITION_ACCEPTED);
@@ -48,6 +48,11 @@ int main(void) {
     evidence.acs_exchange_complete = 0U;
     expect_transition("ACS exchange incomplete", evidence,
                       NODE_RUNTIME_ACS_NOT_INITIALIZED);
+    evidence.acs_exchange_complete = 1U;
+    evidence.acs_peer_exchange_required = 0U;
+    evidence.acs_exchange_complete = 0U;
+    expect_transition("discovery mode local ACS readiness", evidence,
+                      NODE_RUNTIME_TRANSITION_ACCEPTED);
     evidence.acs_exchange_complete = 1U;
     evidence.evidence_complete = 0U;
     expect_transition("incomplete transition evidence", evidence,
