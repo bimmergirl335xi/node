@@ -107,6 +107,158 @@ class AcsModeTests(unittest.TestCase):
         self.assertIn("manufacturer=none", discovery)
         self.assertIn("family=none", discovery)
 
+    def test_explicit_group_summary_retains_configured_peer_semantics(self) -> None:
+        loaded = self.load([
+            profile("node-001", 1, "explicit", ["node-002"]),
+            profile("node-002", 2, "explicit", ["node-001"]),
+        ])
+        events = [{
+            "record": "acs_signal_validation_result",
+            "local": "node-001",
+            "peer": "node-002",
+            "outcome": "valid",
+        }]
+        summary = node_lab.explicit_peer_summary(
+            loaded["node-001"], events, []
+        )
+        self.assertEqual(summary.valid, frozenset({"node-002"}))
+        self.assertEqual(summary.expected, 1)
+        self.assertEqual(summary.result, "complete")
+
+    def test_discovery_summary_ignores_retained_explicit_peers(self) -> None:
+        loaded = self.load([
+            profile("node-001", 1, "discovery", ["node-002"]),
+            profile("node-002", 2, "discovery", []),
+            profile("node-003", 3, "discovery", []),
+        ])
+        events = [
+            {
+                "record": "acs_discovery_ready",
+                "local": "node-001",
+                "peer": "",
+                "outcome": "ready",
+            },
+            {
+                "record": "acs_participant_observed",
+                "local": "node-001",
+                "peer": "node-003",
+                "outcome": "observed",
+            },
+            {
+                "record": "acs_participant_observed",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "observed",
+            },
+        ]
+        summary = node_lab.discovery_observation_summary(
+            loaded["node-001"].node_id, events, [], {"node-002", "node-003"}
+        )
+        self.assertEqual(summary.direct, 2)
+        self.assertEqual(summary.result, "complete")
+
+    def test_discovery_summary_distinguishes_current_observation_states(self) -> None:
+        events = [
+            {
+                "record": "acs_discovery_ready",
+                "local": "node-001",
+                "peer": "",
+                "outcome": "ready",
+            },
+            {
+                "record": "acs_participant_hint_received",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "hinted",
+            },
+            {
+                "record": "acs_participant_observed",
+                "local": "node-001",
+                "peer": "node-003",
+                "outcome": "observed",
+            },
+            {
+                "record": "acs_participant_observed",
+                "local": "node-001",
+                "peer": "node-004",
+                "outcome": "observed",
+            },
+            {
+                "record": "acs_participant_stale",
+                "local": "node-001",
+                "peer": "node-004",
+                "outcome": "stale",
+            },
+            {
+                "record": "acs_discovery_conflict",
+                "local": "node-001",
+                "peer": "node-005",
+                "outcome": "conflict",
+            },
+        ]
+        summary = node_lab.discovery_observation_summary(
+            "node-001", events, [], {
+                "node-002", "node-003", "node-004", "node-005"
+            }
+        )
+        self.assertEqual(summary.direct, 1)
+        self.assertEqual(summary.hint, 1)
+        self.assertEqual(summary.stale, 1)
+        self.assertEqual(summary.conflict, 1)
+        self.assertEqual(summary.result, "degraded")
+
+    def test_discovery_summary_tracks_promotion_and_rediscovery(self) -> None:
+        events = [
+            {
+                "record": "acs_discovery_ready",
+                "local": "node-001",
+                "peer": "",
+                "outcome": "ready",
+            },
+            {
+                "record": "acs_participant_hint_received",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "hinted",
+            },
+            {
+                "record": "acs_participant_observed",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "promoted_to_direct",
+            },
+            {
+                "record": "acs_participant_stale",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "stale",
+            },
+            {
+                "record": "acs_participant_rediscovered",
+                "local": "node-001",
+                "peer": "node-002",
+                "outcome": "observed",
+            },
+        ]
+        summary = node_lab.discovery_observation_summary(
+            "node-001", events, [], {"node-002"}
+        )
+        self.assertEqual(summary.direct, 1)
+        self.assertEqual(summary.hint, 0)
+        self.assertEqual(summary.stale, 0)
+        self.assertEqual(summary.conflict, 0)
+        self.assertEqual(summary.result, "complete")
+
+    def test_discovery_summary_does_not_infer_missing_evidence(self) -> None:
+        summary = node_lab.discovery_observation_summary(
+            "node-001", [], [], {"node-002"}
+        )
+        self.assertIsNone(summary.direct)
+        self.assertIsNone(summary.hint)
+        self.assertIsNone(summary.stale)
+        self.assertIsNone(summary.conflict)
+        self.assertEqual(summary.result, "not_observed")
+
 
 if __name__ == "__main__":
     unittest.main()

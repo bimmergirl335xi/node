@@ -200,6 +200,19 @@ both survivors. The existing five-node explicit mode then retained 4/4 valid
 peers per node (20/20 directed paths), and all five passed CPU activation,
 resident transition, and post-transition probes.
 
+DEV-004A validation scaled the same discovery path to ten concurrently resident
+managed guests. All ten reached ACS and runtime readiness, activated their
+profile-driven CPU runtime, passed the post-transition probe, and directly
+observed the other nine participants for 90 directed volatile observations.
+The original heterogeneous topology remained intact, and nodes 006–010 ran as
+one-vCPU guests with 256 MiB each. Stopping node-007 made its observations stale
+without degrading the surviving runtimes; restart restored its nine direct
+observations and produced stale-to-observed rediscovery on sampled survivors.
+The controller now reports discovery evidence separately from retained
+explicit-peer requirements. These observations created no trust, canonical
+relationship, connection authority, mesh route, or persistent membership; the
+five-node explicit mode remains the deterministic conformance path.
+
 The earlier DEV-003C validation on the development host rebuilt the canonical
 image serially, passed all 39 host CTest cases and the strict-warning build,
 reconfirmed the direct BIOS conformance boot and poweroff path, and exercised
@@ -263,11 +276,13 @@ node set, and failures remain per-node. Debugger exit reaps owned GDB processes
 without stopping QEMU. The controller adds no guest agent, guest runtime
 behavior, remote listener, per-node symbols, or persistent debugger state.
 
-`python/node_lab.py` provides a bounded five-instance layer around those same
-launchers. The tracked `node-001` through `node-005` profiles declare firmware,
+`python/node_lab.py` provides a bounded ten-instance layer around those same
+launchers. The tracked `node-001` through `node-010` profiles declare firmware,
 explicit socket/core/thread topology and vCPU count, memory, unique loopback
 debug settings, deterministic local MAC and
-IPv4 addresses, a default ACS mode, and the explicit conformance peer set. The controller can list, inspect,
+IPv4 addresses and a default ACS mode. The original five profiles retain their
+explicit conformance peer sets, while the five scale profiles require no configured
+remote peers. The controller can list, inspect,
 start, stop, restart, and observe individual instances, and can start, stop, or
 restart the profile set concurrently; generated state and node-local
 serial/JSONL logs remain disposable under `build/virtual/NODE/`. Stop
@@ -311,7 +326,7 @@ protocol and therefore does not claim that host-initiated stops exercise it.
 `node_lab.py cpu-info NODE` reads the bounded node-local CPU JSONL records and
 reports only explicit observations and decisions. `cpu-summary` compares actual
 package, core, logical-processor, SMT, allowed-CPU, resident-worker, and probe
-evidence across the five managed nodes without inferring missing evidence. The
+evidence across the managed fleet without inferring missing evidence. The
 resident pool uses one bounded worker per freshly observed process-allowed CPU,
 including the valid one-worker fallback. CPU inspection remains
 separate from runtime selection, assembly, activation, and readiness.

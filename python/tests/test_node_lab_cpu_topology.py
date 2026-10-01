@@ -15,7 +15,7 @@ import node_lab  # noqa: E402
 
 
 class CpuTopologyTests(unittest.TestCase):
-    def test_canonical_five_node_matrix(self):
+    def test_canonical_ten_node_matrix(self):
         profiles = node_lab.load_profiles()
         observed = {
             node_id: (
@@ -31,8 +31,29 @@ class CpuTopologyTests(unittest.TestCase):
                 "node-003": (1, 4, 1, 4),
                 "node-004": (1, 2, 2, 4),
                 "node-005": (2, 2, 1, 4),
+                "node-006": (1, 1, 1, 1),
+                "node-007": (1, 1, 1, 1),
+                "node-008": (1, 1, 1, 1),
+                "node-009": (1, 1, 1, 1),
+                "node-010": (1, 1, 1, 1),
             },
         )
+
+    def test_scale_nodes_use_discovery_with_bounded_memory(self):
+        profiles = node_lab.load_profiles()
+        for index in range(6, 11):
+            item = profiles[f"node-{index:03d}"]
+            self.assertEqual(item.memory_mb, 256)
+            self.assertEqual(item.acs_mode, "discovery")
+            self.assertEqual(item.acs_peers, ())
+
+    def test_original_explicit_peer_sets_remain_available(self):
+        profiles = node_lab.load_profiles()
+        original = {f"node-{index:03d}" for index in range(1, 6)}
+        for index in range(1, 6):
+            item = profiles[f"node-{index:03d}"]
+            self.assertEqual(item.acs_mode, "discovery")
+            self.assertEqual(set(item.acs_peers), original - {item.node_id})
 
     def test_zero_field_is_rejected(self):
         with self.assertRaisesRegex(node_lab.LabError, "cpu_sockets"):

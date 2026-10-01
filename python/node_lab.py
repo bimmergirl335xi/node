@@ -117,6 +117,22 @@ class ProcessInfo:
     argv: tuple[str, ...]
 
 
+@dataclasses.dataclass(frozen=True)
+class ExplicitPeerSummary:
+    valid: frozenset[str]
+    expected: int
+    result: str
+
+
+@dataclasses.dataclass(frozen=True)
+class DiscoveryObservationSummary:
+    direct: int | None
+    hint: int | None
+    stale: int | None
+    conflict: int | None
+    result: str
+
+
 def utc_now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).replace(
         microsecond=0
@@ -1185,8 +1201,11 @@ def run_group_operation(
         )
 
 
-def peer_validation_state(profile: NodeProfile) -> tuple[set[str], list[str]]:
-    events, malformed = read_events(instance_paths(profile))
+def explicit_peer_summary(
+    profile: NodeProfile,
+    events: list[dict[str, Any]],
+    malformed: list[str],
+) -> ExplicitPeerSummary:
     valid: set[str] = set()
     for event in events:
         if (
@@ -1196,36 +1215,169 @@ def peer_validation_state(profile: NodeProfile) -> tuple[set[str], list[str]]:
             and event.get("peer") in profile.acs_peers
         ):
             valid.add(str(event["peer"]))
-    return valid, malformed
+    missing = [peer for peer in profile.acs_peers if peer not in valid]
+    if malformed:
+        result = "malformed_evidence"
+    elif missing:
+        result = "incomplete:" + ",".join(missing)
+    else:
+        result = "complete"
+    return ExplicitPeerSummary(frozenset(valid), len(profile.acs_peers), result)
+
+
+def discovery_observation_summary(
+    node_id: str,
+    events: list[dict[str, Any]],
+    malformed: list[str],
+    expected_remote: set[str],
+) -> DiscoveryObservationSummary:
+    if malformed:
+        return DiscoveryObservationSummary(
+            None, None, None, None, "malformed_evidence"
+        )
+
+    ready = False
+    observations: dict[str, tuple[str, str]] = {}
+    for event in events:
+        if event.get("local") != node_id:
+            continue
+        record = event.get("record")
+        if record == "acs_discovery_ready" and event.get("outcome") == "ready":
+            ready = True
+            continue
+        peer = event.get("peer")
+        if (
+            not isinstance(peer, str)
+            or NODE_ID_PATTERN.fullmatch(peer) is None
+            or peer == node_id
+        ):
+            continue
+        if record == "acs_participant_observed":
+            observations[peer] = ("direct", "observed")
+        elif record == "acs_participant_hint_received":
+            current = observations.get(peer)
+            if current is None or current[0] != "direct":
+                observations[peer] = ("hint", "observed")
+        elif record == "acs_participant_stale":
+            kind = observations.get(peer, ("unknown", "observed"))[0]
+            observations[peer] = (kind, "stale")
+        elif record == "acs_participant_rediscovered":
+            observations[peer] = ("direct", "observed")
+        elif record == "acs_discovery_conflict":
+            kind = observations.get(peer, ("unknown", "observed"))[0]
+            observations[peer] = (kind, "conflict")
+
+    if not ready:
+        return DiscoveryObservationSummary(
+            None, None, None, None, "not_observed"
+        )
+
+    direct_peers = {
+        peer for peer, (kind, state) in observations.items()
+        if kind == "direct" and state == "observed"
+    }
+    direct = len(direct_peers)
+    hint = sum(
+        kind == "hint" and state == "observed"
+        for kind, state in observations.values()
+    )
+    stale = sum(state == "stale" for _, state in observations.values())
+    conflict = sum(state == "conflict" for _, state in observations.values())
+    if stale or conflict:
+        result = "degraded"
+    elif direct_peers == expected_remote:
+        result = "complete"
+    else:
+        result = "incomplete"
+    return DiscoveryObservationSummary(direct, hint, stale, conflict, result)
+
+
+def peer_validation_state(profile: NodeProfile) -> tuple[set[str], list[str]]:
+    events, malformed = read_events(instance_paths(profile))
+    summary = explicit_peer_summary(profile, events, malformed)
+    return set(summary.valid), malformed
 
 
 def print_group_status() -> None:
     profiles = load_profiles()
-    print("NODE ID\tSTATE\tNETWORK\tVALID PEERS\tACS RESULT")
-    complete = True
+    rows: list[dict[str, str]] = []
     for node_id in sorted(profiles):
         profile = profiles[node_id]
         paths = instance_paths(profile)
         with InstanceLock(paths):
-            _, info, _ = reconcile(profile, paths)
+            state, info, _ = reconcile(profile, paths)
             try:
-                valid, malformed = peer_validation_state(profile)
+                events, malformed = read_events(paths)
             except LabError:
-                valid, malformed = set(), ["unavailable"]
-        missing = [peer for peer in profile.acs_peers if peer not in valid]
-        if malformed:
-            result = "malformed_evidence"
-        elif missing:
-            result = "incomplete:" + ",".join(missing)
+                events, malformed = [], ["unavailable"]
+        selected_mode = str((state or {}).get("acs_mode", profile.acs_mode))
+        if selected_mode not in ("explicit", "discovery"):
+            selected_mode = profile.acs_mode
+        row = {
+            "node_id": node_id,
+            "state": "running" if info else "stopped",
+            "network": network_attachment(profile, info),
+            "mode": selected_mode,
+        }
+        if selected_mode == "explicit":
+            summary = explicit_peer_summary(profile, events, malformed)
+            row.update({
+                "valid": f"{len(summary.valid)}/{summary.expected}",
+                "result": summary.result,
+            })
         else:
-            result = "complete"
-        complete = complete and not missing and not malformed
+            summary = discovery_observation_summary(
+                node_id, events, malformed, set(profiles) - {node_id}
+            )
+            row.update({
+                "direct": "not_observed" if summary.direct is None else str(summary.direct),
+                "hint": "not_observed" if summary.hint is None else str(summary.hint),
+                "stale": "not_observed" if summary.stale is None else str(summary.stale),
+                "conflict": (
+                    "not_observed" if summary.conflict is None else str(summary.conflict)
+                ),
+                "result": summary.result,
+            })
+        rows.append(row)
+
+    modes = {row["mode"] for row in rows}
+    complete = all(row["result"] == "complete" for row in rows)
+    if modes == {"explicit"}:
+        print("NODE ID\tSTATE\tNETWORK\tVALID PEERS\tACS RESULT")
+        for row in rows:
+            print(
+                f"{row['node_id']}\t{row['state']}\t{row['network']}\t"
+                f"{row['valid']}\t{row['result']}"
+            )
+        print(f"group_acs_exchange: {'complete' if complete else 'incomplete'}")
+    elif modes == {"discovery"}:
         print(
-            f"{node_id}\t{'running' if info else 'stopped'}\t"
-            f"{network_attachment(profile, info)}\t{len(valid)}/{len(profile.acs_peers)}\t"
-            f"{result}"
+            "NODE ID\tSTATE\tNETWORK\tACS MODE\tDIRECT\tHINT\tSTALE\t"
+            "CONFLICT\tDISCOVERY RESULT"
         )
-    print(f"group_acs_exchange: {'complete' if complete else 'incomplete'}")
+        for row in rows:
+            print(
+                f"{row['node_id']}\t{row['state']}\t{row['network']}\t"
+                f"{row['mode']}\t{row['direct']}\t{row['hint']}\t"
+                f"{row['stale']}\t{row['conflict']}\t{row['result']}"
+            )
+        print(f"group_acs_discovery: {'complete' if complete else 'incomplete'}")
+    else:
+        print("NODE ID\tSTATE\tNETWORK\tACS MODE\tEVIDENCE\tACS RESULT")
+        for row in rows:
+            evidence = (
+                f"valid={row['valid']}"
+                if row["mode"] == "explicit"
+                else (
+                    f"direct={row['direct']},hint={row['hint']},"
+                    f"stale={row['stale']},conflict={row['conflict']}"
+                )
+            )
+            print(
+                f"{row['node_id']}\t{row['state']}\t{row['network']}\t"
+                f"{row['mode']}\t{evidence}\t{row['result']}"
+            )
+        print(f"group_acs_status: {'complete' if complete else 'incomplete'}")
 
 
 def print_events(profile: NodeProfile, limit: int) -> None:
@@ -1636,13 +1788,13 @@ def parser() -> argparse.ArgumentParser:
     )
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list configured managed virtual nodes")
-    commands.add_parser("group-status", help="summarize bounded five-node ACS evidence")
-    commands.add_parser("cpu-summary", help="summarize five-node CPU decisions")
+    commands.add_parser("group-status", help="summarize bounded managed-fleet ACS evidence")
+    commands.add_parser("cpu-summary", help="summarize managed-fleet CPU decisions")
     commands.add_parser(
-        "cpu-runtime-summary", help="summarize five-node CPU runtime evidence"
+        "cpu-runtime-summary", help="summarize managed-fleet CPU runtime evidence"
     )
     commands.add_parser(
-        "runtime-summary", help="summarize five-node resident runtime evidence"
+        "runtime-summary", help="summarize managed-fleet resident runtime evidence"
     )
     commands.add_parser("stop-all", help="concurrently stop every managed node")
     start_all = commands.add_parser("start-all", help="concurrently start every managed node")

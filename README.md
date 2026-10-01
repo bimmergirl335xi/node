@@ -192,7 +192,7 @@ one-shot targeting. `status`, `nodes`, `reconnect`, `disconnect`, `help`, and
 thread, exit, and connection events retain node attribution. Exiting the
 frontend reaps only its GDB processes and never stops the managed VMs.
 
-The five managed development instances are declared under
+The ten managed development instances are declared under
 `config/virtual_nodes/`. A bounded Python standard-library controller discovers
 the profiles, validates their explicit socket/core/thread topology, and wraps the same
 launchers without replacing their boot contract:
@@ -227,34 +227,46 @@ the paused DEV-001D workflow with profile-specific loopback GDB ports.
 Generated PID/state records and per-node serial/event logs live only beneath
 `build/virtual/NODE/`. Before stopping an instance, the controller verifies
 the recorded PID, Linux process-start identity, managed QEMU marker, canonical
-ISO argument, and exact private-network arguments. The five managed guests have
-one, two, or four profile-driven vCPUs spanning single-core, multi-core, SMT,
-and multi-socket cases. QEMU receives the explicit topology, while `cpu-info`
+ISO argument, and exact private-network arguments. The first five managed guests
+have one, two, or four profile-driven vCPUs spanning single-core, multi-core,
+SMT, and multi-socket cases; the five scale participants each have one vCPU.
+QEMU receives the explicit topology, while `cpu-info`
 and `cpu-summary` report fresh guest observations plus the bounded resident CPU
-worker count and deterministic per-worker probe result. The five guests also have
+worker count and deterministic per-worker probe result. The ten guests also have
 deterministic locally administered MAC and IPv4 addresses on one QEMU datagram
 multicast Ethernet segment confined to host loopback. It has no NAT, host bridge, TAP,
 internet access, or host-LAN listener. Managed guests use only the fixed
-development range `10.77.0.1/24` through `10.77.0.5/24`. Explicit mode uses UDP
+development range `10.77.0.1/24` through `10.77.0.10/24`. Explicit mode uses UDP
 port `39001` to exchange bounded `public.transport.conformance` signals. All 20 directed paths
 are structurally validated against public ACS registry, lifecycle, admission,
 peer-specific binding, attachment, correlation, and envelope evidence. `start-all`
-and `restart-all` launch concurrently; `group-status` reports success only from
-structured peer validation records. Discovery mode instead passes zero remote
-peers and uses guest-local multicast `239.77.0.1:39002` for bounded presence,
-response, and participant-hint traffic. Observations are volatile, expire to
-stale, and create no relationship, connection, attachment, trust, capability,
-or authority. Both unencrypted paths are isolated development transports, not
-authentication, a production-secure session, a cluster, or a private ACS
-control plane. The direct build, normal QEMU, and debug launchers remain
-independently usable and retain their no-network default.
+and `restart-all` launch concurrently; `group-status` uses structured explicit
+peer-validation records in explicit mode and reconstructs distinct direct,
+hint, stale, and conflict observation counts in discovery mode. Discovery mode
+passes zero remote peers and uses guest-local multicast `239.77.0.1:39002` for
+bounded presence, response, and participant-hint traffic. Observations are
+volatile, expire to stale, and create no relationship, connection, attachment,
+trust, capability, or authority. Both unencrypted paths are isolated
+development transports, not authentication, a production-secure session, a
+cluster, or a private ACS control plane. The direct build, normal QEMU, and
+debug launchers remain independently usable and retain their no-network default.
+
+DEV-004A host validation ran all ten discovery-driven guests concurrently. All
+ten activated their profile-driven CPU runtime, reached resident readiness, and
+directly observed the other nine participants, producing 90 directed volatile
+observations. A node-007 stop produced stale observations without degrading the
+survivors; its restart restored direct observations through bounded
+rediscovery. Explicit mode remains available for deterministic five-node
+conformance. This validation established no trust, canonical relationship,
+mesh route, authority, or persistent membership.
 
 ACS-001A adds no trust scoring, operator authority, source or artifact
 propagation, mesh routing, or persistent discovery state.
 
 Managed `start`, `restart`, `start-all`, and `restart-all` accept an explicit
 `--mode conformance` or `--mode lab` and an optional `--acs-mode explicit` or
-`--acs-mode discovery`; profile defaults remain explicit. Lab mode
+`--acs-mode discovery`; the ten fleet profiles default to discovery while the
+original five retain their explicit peer sets for deterministic override. Lab mode
 selects resident behavior through bounded QEMU platform metadata while the
 same `build/artifacts/node-current.iso` is used in both modes. After the
 initial CPU probe and ACS local readiness (plus complete configured exchange in

@@ -1,20 +1,20 @@
 {
-  "node_id": "node-002",
+  "node_id": "node-010",
   "firmware": "bios",
-  "vcpus": 2,
+  "vcpus": 1,
   "cpu_sockets": 1,
-  "cpu_cores": 2,
+  "cpu_cores": 1,
   "cpu_threads": 1,
-  "memory_mb": 512,
+  "memory_mb": 256,
   "debug_enabled": false,
-  "gdb_port": 1235,
+  "gdb_port": 1243,
   "network_enabled": true,
-  "mac_address": "02:00:00:00:00:02",
-  "ipv4_address": "10.77.0.2/24",
+  "mac_address": "02:00:00:00:00:0a",
+  "ipv4_address": "10.77.0.10/24",
   "acs_port": 39001,
   "network_multicast_address": "230.0.0.1",
   "network_multicast_port": 39000,
   "network_local_address": "127.0.0.1",
   "acs_mode": "discovery",
-  "acs_peers": ["node-001", "node-003", "node-004", "node-005"]
+  "acs_peers": []
 }
