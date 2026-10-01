@@ -15,7 +15,7 @@ import node_lab  # noqa: E402
 
 
 class CpuTopologyTests(unittest.TestCase):
-    def test_canonical_ten_node_matrix(self):
+    def test_canonical_twenty_five_node_matrix(self):
         profiles = node_lab.load_profiles()
         observed = {
             node_id: (
@@ -23,25 +23,22 @@ class CpuTopologyTests(unittest.TestCase):
             )
             for node_id, item in profiles.items()
         }
-        self.assertEqual(
-            observed,
-            {
-                "node-001": (1, 1, 1, 1),
-                "node-002": (1, 2, 1, 2),
-                "node-003": (1, 4, 1, 4),
-                "node-004": (1, 2, 2, 4),
-                "node-005": (2, 2, 1, 4),
-                "node-006": (1, 1, 1, 1),
-                "node-007": (1, 1, 1, 1),
-                "node-008": (1, 1, 1, 1),
-                "node-009": (1, 1, 1, 1),
-                "node-010": (1, 1, 1, 1),
-            },
-        )
+        expected = {
+            "node-001": (1, 1, 1, 1),
+            "node-002": (1, 2, 1, 2),
+            "node-003": (1, 4, 1, 4),
+            "node-004": (1, 2, 2, 4),
+            "node-005": (2, 2, 1, 4),
+        }
+        expected.update({
+            f"node-{index:03d}": (1, 1, 1, 1)
+            for index in range(6, 26)
+        })
+        self.assertEqual(observed, expected)
 
     def test_scale_nodes_use_discovery_with_bounded_memory(self):
         profiles = node_lab.load_profiles()
-        for index in range(6, 11):
+        for index in range(6, 26):
             item = profiles[f"node-{index:03d}"]
             self.assertEqual(item.memory_mb, 256)
             self.assertEqual(item.acs_mode, "discovery")

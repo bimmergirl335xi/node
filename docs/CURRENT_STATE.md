@@ -213,6 +213,12 @@ explicit-peer requirements. These observations created no trust, canonical
 relationship, connection authority, mesh route, or persistent membership; the
 five-node explicit mode remains the deterministic conformance path.
 
+DEV-004B extends the tracked host-side lab configuration to 25 discovery-mode
+profiles. Nodes 011–025 use one vCPU, 256 MiB, and no explicit peers. A complete
+25-node run would yield 24 direct observations per Node and 600 directed
+volatile observations fleet-wide; that runtime scale result has not yet been
+validated and is not claimed here.
+
 The earlier DEV-003C validation on the development host rebuilt the canonical
 image serially, passed all 39 host CTest cases and the strict-warning build,
 reconfirmed the direct BIOS conformance boot and poweroff path, and exercised
@@ -276,12 +282,12 @@ node set, and failures remain per-node. Debugger exit reaps owned GDB processes
 without stopping QEMU. The controller adds no guest agent, guest runtime
 behavior, remote listener, per-node symbols, or persistent debugger state.
 
-`python/node_lab.py` provides a bounded ten-instance layer around those same
-launchers. The tracked `node-001` through `node-010` profiles declare firmware,
+`python/node_lab.py` provides a bounded twenty-five-instance layer around those same
+launchers. The tracked `node-001` through `node-025` profiles declare firmware,
 explicit socket/core/thread topology and vCPU count, memory, unique loopback
 debug settings, deterministic local MAC and
 IPv4 addresses and a default ACS mode. The original five profiles retain their
-explicit conformance peer sets, while the five scale profiles require no configured
+explicit conformance peer sets, while the twenty scale profiles require no configured
 remote peers. The controller can list, inspect,
 start, stop, restart, and observe individual instances, and can start, stop, or
 restart the profile set concurrently; generated state and node-local
