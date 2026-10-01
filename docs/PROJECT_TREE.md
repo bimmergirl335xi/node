@@ -14,8 +14,8 @@ individual files and all generated output.
 ## Boot and micro-OS
 
 - overall assembly boundary: `assembly/README.md`
-- permanent PID 1, startup manifest, and BOOT-owned first-boot CPU requirement
-  evaluator: `assembly/micro_os/`
+- permanent PID 1, startup manifest, BOOT-owned CPU requirement evaluator, and
+  bounded current-boot CPU runtime assembly proof: `assembly/micro_os/`
 - P01 candidate image and QEMU proof: `assembly/p01_boot/`
 - PID 1 sequencing contract: `assembly/init/`
 - RAM-only kernel/initramfs proof: `assembly/ram_assembly_p0/`

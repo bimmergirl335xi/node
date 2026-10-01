@@ -18,10 +18,31 @@ for member in init etc/node-p01/p01-public-startup-v1.manifest \
     node/services/optional_intentional_failure node/services/timeout_probe \
     node/services/signal_termination_probe \
     node/services/cpu_assembly_decision \
+    node/services/cpu_runtime_assembly \
+    node/candidates/cpu-runtime-x86_64-avx2 \
+    node/candidates/cpu-runtime-x86_64-avx2.provenance \
     node/services/acs_reference_transport; do
     grep -Eq "^(\\./)?${member}$" "${validation}/initramfs.list" ||
         p01_fail "initramfs member missing: ${member}"
 done
+
+runtime_candidate="${root}/node/candidates/cpu-runtime-x86_64-avx2"
+runtime_provenance="${root}/node/candidates/cpu-runtime-x86_64-avx2.provenance"
+runtime_sha256=$(sed -n 's/^artifact_sha256=//p' "${runtime_provenance}")
+runtime_size=$(sed -n 's/^artifact_size=//p' "${runtime_provenance}")
+[[ ${runtime_sha256} =~ ^[0-9a-f]{64}$ ]] ||
+    p01_fail 'CPU runtime provenance digest is malformed'
+[[ ${runtime_size} =~ ^[1-9][0-9]*$ && ${runtime_size} -le 4194304 ]] ||
+    p01_fail 'CPU runtime provenance size is invalid'
+[[ $(p01_sha256 "${runtime_candidate}") == "${runtime_sha256}" ]] ||
+    p01_fail 'CPU runtime candidate digest validation failed'
+[[ $(p01_size "${runtime_candidate}") == "${runtime_size}" ]] ||
+    p01_fail 'CPU runtime candidate size validation failed'
+grep -Fxq 'profile=avx2' "${runtime_provenance}" ||
+    p01_fail 'CPU runtime candidate profile is invalid'
+grep -Fxq 'compile_location=host-canonical-image-build' \
+    "${runtime_provenance}" ||
+    p01_fail 'CPU runtime candidate compilation location is invalid'
 
 while IFS= read -r executable; do
     file -- "${executable}" | grep -Fq 'statically linked' ||

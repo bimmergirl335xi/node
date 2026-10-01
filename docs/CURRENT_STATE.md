@@ -54,9 +54,17 @@ EFI variables, or grants an artifact production authority.
 
 The CPU decision records observation, normalized capabilities, selected SIMD
 profile, `cpu.runtime=required`, and `gpu.runtime=not_required` as distinct
-facts. It neither compiles nor activates a runtime, and therefore does not
-establish readiness. The remaining included services are conformance probes;
-none are production CPU, GPU, ACS, network, or application providers.
+facts. For the current x86_64/AVX2 development profile, the canonical serial
+image build produces one static CPU conformance candidate with bounded
+provenance. Every guest independently consumes its exported decision,
+materializes the candidate into volatile `/run`, validates its SHA-256, size,
+ELF/ABI/profile properties, launches it for the current boot, and runs a
+deterministic AVX2 probe through the existing bounded CPU thread pool after an
+explicit test-generation-only BOOT acceptance. This is a P01 conformance
+activation only: it adds no durable installation, reboot continuation,
+resident runtime handoff, or global readiness claim. The
+remaining included services are conformance probes; none are production CPU,
+GPU, ACS, network, or application providers.
 
 ## Current assembly state
 
@@ -227,6 +235,9 @@ disposable reference transport, not a cluster or ACS control plane.
 reports only explicit observations and decisions. `cpu-summary` compares the
 five managed nodes without inferring missing evidence. CPU inspection remains
 separate from runtime selection, assembly, activation, and readiness.
+`cpu-runtime NODE` and `cpu-runtime-summary` similarly expose the distinct
+build request, candidate, validation, activation, and probe outcomes. They do
+not convert successful conformance execution into Node runtime readiness.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.

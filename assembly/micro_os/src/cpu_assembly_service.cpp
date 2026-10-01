@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
@@ -19,18 +20,19 @@ namespace {
 
 int event_output_fd = STDOUT_FILENO;
 
-void write_all(const char* data, std::size_t size) noexcept {
+bool write_all(int descriptor, const char* data, std::size_t size) noexcept {
     while (size > 0) {
-        const ssize_t count = write(event_output_fd, data, size);
+        const ssize_t count = write(descriptor, data, size);
         if (count > 0) {
             data += count;
             size -= static_cast<std::size_t>(count);
         } else if (count < 0 && errno == EINTR) {
             continue;
         } else {
-            return;
+            return false;
         }
     }
+    return true;
 }
 
 template <typename... Arguments>
@@ -39,7 +41,52 @@ void emit(const char* format, Arguments... arguments) noexcept {
     const int length = std::snprintf(
         line.data(), line.size(), format, arguments...);
     if (length > 0 && static_cast<std::size_t>(length) < line.size())
-        write_all(line.data(), static_cast<std::size_t>(length));
+        (void)write_all(event_output_fd, line.data(),
+                        static_cast<std::size_t>(length));
+}
+
+bool persist_decision(const std::string& node,
+                      const boot::CpuAssemblyDecision& decision) noexcept {
+    std::string path{};
+    const char* host_root = std::getenv("NODE_P01_HOST_ROOT");
+    if (host_root != nullptr && host_root[0] != '\0') {
+        path = host_root;
+        if (path.size() > 256 || path.front() != '/' ||
+            path.find("..") != std::string::npos || path.back() == '/') {
+            return false;
+        }
+    }
+    path += "/run/node-p01-results/cpu-assembly-decision.v1";
+    const int descriptor = open(
+        path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW,
+        0600);
+    if (descriptor < 0) return false;
+    std::array<char, 1024> record{};
+    const int length = std::snprintf(
+        record.data(), record.size(),
+        "schema=node.cpu-assembly-decision.v1\n"
+        "node=%s\n"
+        "component_set=p01.cpu-only.first-boot\n"
+        "evaluation=%s\n"
+        "cpu_runtime=%s\n"
+        "gpu_runtime=%s\n"
+        "architecture=%s\n"
+        "profile=%s\n",
+        node.c_str(), boot::to_string(decision.evaluation),
+        boot::to_string(decision.cpu_runtime),
+        boot::to_string(decision.gpu_runtime),
+        cpu::to_string(decision.selected_architecture),
+        cpu::to_string(decision.selected_simd));
+    const bool valid_length =
+        length > 0 && static_cast<std::size_t>(length) < record.size();
+    const bool written = valid_length &&
+        write_all(descriptor, record.data(), static_cast<std::size_t>(length));
+    const bool closed = close(descriptor) == 0;
+    if (!written || !closed) {
+        (void)unlink(path.c_str());
+        return false;
+    }
+    return true;
 }
 
 bool valid_node_id(const std::string& value) {
@@ -206,7 +253,20 @@ int run() {
          "\"component_set_revision\":1,"
          "\"detail\":\"boot_owned_requirement_plan_only\"}\n",
          node.c_str(), boot::to_string(decision.evaluation));
-    return decision.compatible() ? 0 : 30;
+    if (!decision.compatible()) return 30;
+    if (!persist_decision(node, decision)) {
+        emit("{\"record\":\"assembly_decision_export\",\"subject\":\"%s\","
+             "\"outcome\":\"unavailable\","
+             "\"detail\":\"bounded_volatile_decision_export_failed\"}\n",
+             node.c_str());
+        return 32;
+    }
+    emit("{\"record\":\"assembly_decision_export\",\"subject\":\"%s\","
+         "\"outcome\":\"available\",\"schema\":"
+         "\"node.cpu-assembly-decision.v1\","
+         "\"detail\":\"bounded_volatile_current_boot_only\"}\n",
+         node.c_str());
+    return 0;
 }
 
 }  // namespace

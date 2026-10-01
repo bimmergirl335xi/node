@@ -1227,6 +1227,95 @@ def print_cpu_summary() -> None:
         raise LabError("one or more managed nodes lack complete CPU evidence")
 
 
+def cpu_runtime_evidence_summary(profile: NodeProfile) -> dict[str, str]:
+    paths = instance_paths(profile)
+    events, malformed = read_events(paths)
+    if malformed:
+        raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+    expected = {
+        "request": "cpu_runtime_build_requested",
+        "build": "cpu_runtime_build_result",
+        "artifact": "cpu_runtime_artifact_created",
+        "validation": "cpu_runtime_artifact_validation",
+        "acceptance": "cpu_runtime_boot_acceptance",
+        "activation": "cpu_runtime_activation_result",
+        "probe": "cpu_runtime_probe_result",
+        "phase": "cpu_runtime_phase_result",
+    }
+    selected: dict[str, dict[str, Any] | None] = {
+        key: None for key in expected
+    }
+    by_record = {record: key for key, record in expected.items()}
+    for event in events:
+        if event.get("subject") != profile.node_id:
+            continue
+        key = by_record.get(event.get("record"))
+        if key is not None:
+            selected[key] = event
+    if not all(selected.values()):
+        missing = ",".join(key for key, value in selected.items() if value is None)
+        raise LabError(
+            f"CPU runtime evidence is incomplete for {profile.node_id}: {missing}"
+        )
+
+    def field(section: str, key: str) -> str:
+        event = selected[section]
+        value = event.get(key, "unknown") if event is not None else "unknown"
+        if isinstance(value, bool):
+            return str(value).lower()
+        if isinstance(value, (str, int)):
+            return str(value)[:128]
+        return "unknown"
+
+    return {
+        "node_id": profile.node_id,
+        "profile": field("request", "profile"),
+        "build_request": field("request", "outcome"),
+        "build": field("build", "outcome"),
+        "compiled": field("phase", "runtime_compiled"),
+        "compiled_this_boot": field("build", "compiled_this_boot"),
+        "artifact_identity": field("artifact", "artifact_identity"),
+        "artifact_sha256": field("artifact", "sha256"),
+        "artifact_size_bytes": field("artifact", "size_bytes"),
+        "validation": field("validation", "outcome"),
+        "boot_acceptance": field("acceptance", "outcome"),
+        "activated": field("phase", "runtime_activated"),
+        "activation": field("activation", "outcome"),
+        "probe": field("probe", "outcome"),
+        "probe_result": field("probe", "result"),
+        "phase": field("phase", "outcome"),
+        "failure_category": field("phase", "failure_category"),
+        "global_runtime_ready": field("phase", "global_runtime_ready"),
+        "evidence_log": str(paths.event_log),
+    }
+
+
+def print_cpu_runtime(profile: NodeProfile) -> None:
+    summary = cpu_runtime_evidence_summary(profile)
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+
+
+def print_cpu_runtime_summary() -> None:
+    profiles = load_profiles()
+    print("NODE ID\tPROFILE\tBUILD\tVALIDATE\tACTIVE\tPROBE\tPHASE")
+    incomplete = False
+    for node_id in sorted(profiles):
+        profile = profiles[node_id]
+        try:
+            summary = cpu_runtime_evidence_summary(profile)
+            print(
+                f"{node_id}\t{summary['profile']}\t{summary['build']}\t"
+                f"{summary['validation']}\t{summary['activated']}\t"
+                f"{summary['probe']}\t{summary['phase']}"
+            )
+        except LabError as error:
+            incomplete = True
+            print(f"{node_id}\tnot_observed\t-\t-\t-\t-\t{error}")
+    if incomplete:
+        raise LabError("one or more managed nodes lack complete CPU runtime evidence")
+
+
 def print_serial(profile: NodeProfile, lines: int) -> None:
     path = instance_paths(profile).serial_log
     try:
@@ -1281,6 +1370,9 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("list", help="list configured managed virtual nodes")
     commands.add_parser("group-status", help="summarize bounded five-node ACS evidence")
     commands.add_parser("cpu-summary", help="summarize five-node CPU decisions")
+    commands.add_parser(
+        "cpu-runtime-summary", help="summarize five-node CPU runtime evidence"
+    )
     commands.add_parser("stop-all", help="concurrently stop every managed node")
     start_all = commands.add_parser("start-all", help="concurrently start every managed node")
     start_all.add_argument("--debug", action="store_true")
@@ -1288,7 +1380,7 @@ def parser() -> argparse.ArgumentParser:
         "restart-all", help="concurrently restart every managed node"
     )
     restart_all.add_argument("--debug", action="store_true")
-    for name in ("status", "stop", "debug-info", "cpu-info"):
+    for name in ("status", "stop", "debug-info", "cpu-info", "cpu-runtime"):
         command = commands.add_parser(name)
         command.add_argument("node_id")
     for name in ("start", "restart"):
@@ -1325,6 +1417,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "cpu-summary":
             print_cpu_summary()
             return 0
+        if args.command == "cpu-runtime-summary":
+            print_cpu_runtime_summary()
+            return 0
         if args.command == "start-all":
             run_group_operation("start", args.debug)
             return 0
@@ -1350,6 +1445,8 @@ def main(argv: list[str] | None = None) -> int:
             print_acs_events(profile, args.limit)
         elif args.command == "cpu-info":
             print_cpu_info(profile)
+        elif args.command == "cpu-runtime":
+            print_cpu_runtime(profile)
         elif args.command == "serial":
             print_serial(profile, args.lines)
         elif args.command == "debug-info":

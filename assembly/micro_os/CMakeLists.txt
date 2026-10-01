@@ -12,6 +12,7 @@ target_compile_features(node_p01_manifest PUBLIC c_std_11)
 target_compile_options(node_p01_manifest PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 set(NODE_P01_ROOT "${PROJECT_BINARY_DIR}/assembly/p01-root")
+file(MAKE_DIRECTORY "${NODE_P01_ROOT}/node/candidates")
 
 add_executable(node_p01_init src/node_init.c)
 target_link_libraries(node_p01_init PRIVATE node_p01_manifest)
@@ -89,6 +90,87 @@ set_target_properties(
         RUNTIME_OUTPUT_DIRECTORY "${NODE_P01_ROOT}/node/services"
 )
 
+add_library(
+    node_boot_cpu_runtime_assembly
+    STATIC
+        src/node_cpu_runtime_assembly.cpp
+)
+target_include_directories(
+    node_boot_cpu_runtime_assembly
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_compile_features(node_boot_cpu_runtime_assembly PUBLIC cxx_std_17)
+target_compile_options(
+    node_boot_cpu_runtime_assembly
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+
+add_executable(
+    node_p01_cpu_runtime_candidate
+    src/cpu_runtime_candidate.cpp
+)
+target_link_libraries(
+    node_p01_cpu_runtime_candidate
+    PRIVATE
+        prometheus_cpu_thread_pool
+        Threads::Threads
+)
+target_compile_features(node_p01_cpu_runtime_candidate PRIVATE cxx_std_17)
+target_compile_options(
+    node_p01_cpu_runtime_candidate
+    PRIVATE -mavx2 -fno-pie -Wall -Wextra -Wpedantic -Werror
+)
+target_link_options(node_p01_cpu_runtime_candidate PRIVATE -static -no-pie)
+set_target_properties(
+    node_p01_cpu_runtime_candidate
+    PROPERTIES
+        OUTPUT_NAME cpu-runtime-x86_64-avx2
+        RUNTIME_OUTPUT_DIRECTORY "${NODE_P01_ROOT}/node/candidates"
+)
+set(NODE_CPU_RUNTIME_PROVENANCE
+    "${NODE_P01_ROOT}/node/candidates/cpu-runtime-x86_64-avx2.provenance"
+)
+add_custom_command(
+    OUTPUT "${NODE_CPU_RUNTIME_PROVENANCE}"
+    COMMAND
+        "${CMAKE_COMMAND}"
+        -DINPUT=$<TARGET_FILE:node_p01_cpu_runtime_candidate>
+        -DOUTPUT=${NODE_CPU_RUNTIME_PROVENANCE}
+        -DTOOLCHAIN_IDENTITY=${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateCpuRuntimeProvenance.cmake"
+    DEPENDS
+        node_p01_cpu_runtime_candidate
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateCpuRuntimeProvenance.cmake"
+    VERBATIM
+)
+add_custom_target(
+    node_p01_cpu_runtime_provenance ALL
+    DEPENDS "${NODE_CPU_RUNTIME_PROVENANCE}"
+)
+
+add_executable(
+    node_p01_cpu_runtime_assembly
+    src/cpu_runtime_assembly_service.cpp
+)
+target_link_libraries(
+    node_p01_cpu_runtime_assembly
+    PRIVATE
+        node_boot_cpu_runtime_assembly
+)
+target_compile_features(node_p01_cpu_runtime_assembly PRIVATE cxx_std_17)
+target_compile_options(
+    node_p01_cpu_runtime_assembly
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+target_link_options(node_p01_cpu_runtime_assembly PRIVATE -static)
+set_target_properties(
+    node_p01_cpu_runtime_assembly
+    PROPERTIES
+        OUTPUT_NAME cpu_runtime_assembly
+        RUNTIME_OUTPUT_DIRECTORY "${NODE_P01_ROOT}/node/services"
+)
+
 add_executable(
     node_p01_acs_reference_transport
     src/acs_reference_service.cpp
@@ -142,6 +224,37 @@ if(PROMETHEUS_BUILD_TESTS)
     add_test(
         NAME p01_cpu_assembly_decision
         COMMAND node_cpu_assembly_decision_tests
+    )
+    add_executable(
+        node_cpu_runtime_assembly_tests
+        tests/test_cpu_runtime_assembly.cpp
+    )
+    target_link_libraries(
+        node_cpu_runtime_assembly_tests
+        PRIVATE node_boot_cpu_runtime_assembly
+    )
+    target_compile_options(
+        node_cpu_runtime_assembly_tests
+        PRIVATE -Wall -Wextra -Wpedantic -Werror
+    )
+    add_test(
+        NAME p01_cpu_runtime_assembly
+        COMMAND node_cpu_runtime_assembly_tests
+                "$<TARGET_FILE:node_p01_cpu_runtime_candidate>"
+    )
+    add_test(
+        NAME p01_cpu_runtime_candidate_probe
+        COMMAND "$<TARGET_FILE:node_p01_cpu_runtime_candidate>" --serve-probe
+    )
+    set_tests_properties(
+        p01_cpu_runtime_candidate_probe
+        PROPERTIES
+            PASS_REGULAR_EXPRESSION "NODE_CPU_RUNTIME_PROBE 120"
+            TIMEOUT 3
+    )
+    add_dependencies(
+        node_cpu_runtime_assembly_tests
+        node_p01_cpu_runtime_provenance
     )
     add_test(
         NAME p01_supervisor_host

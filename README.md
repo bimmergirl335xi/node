@@ -23,8 +23,8 @@ replace the legacy robot loop.
   foundations;
 - bounded public ACS descriptors, registry, lifecycle state, and pure admission
   evaluation, plus an isolated five-node multi-peer reference transport;
-- a static C11 PID 1 micro-OS, P01 candidate-image tooling, and a first-boot
-  CPU observation/assembly-requirement decision;
+- a static C11 PID 1 micro-OS, P01 candidate-image tooling, and a bounded
+  first-boot CPU discovery, assembly, activation, and execution proof;
 - a RAM-only assembly mechanism proof and a public external-component ABI.
 
 ### Validated in earlier development checkpoints
@@ -184,14 +184,16 @@ launchers without replacing their boot contract:
 ./python/node_lab.py acs-events node-001
 ./python/node_lab.py cpu-info node-001
 ./python/node_lab.py cpu-summary
+./python/node_lab.py cpu-runtime node-001
+./python/node_lab.py cpu-runtime-summary
 ./python/node_lab.py serial node-001
 ./python/node_lab.py stop node-001
 ./python/node_lab.py restart-all
 ./python/node_lab.py stop-all
 ```
 
-`restart`, `acs-events`, `cpu-info`, `cpu-summary`, and `debug-info` are also
-available, and
+`restart`, `acs-events`, `cpu-info`, `cpu-summary`, `cpu-runtime`,
+`cpu-runtime-summary`, and `debug-info` are also available, and
 `start NODE --debug` reuses
 the paused DEV-001D workflow with profile-specific loopback GDB ports.
 Generated PID/state records and per-node serial/event logs live only beneath
@@ -215,10 +217,15 @@ retain their no-network default.
 Each managed guest also runs the existing generic CPU topology/capability
 provider during first boot. Bounded JSONL records keep raw observation,
 normalized capability, capability-driven profile evaluation, and the BOOT-owned
-component decision distinct. `cpu-info NODE` reports one node's evidence and
-`cpu-summary` compares the five nodes. The current P01 component set requires
-`cpu.runtime` and does not require `gpu.runtime`; it does not compile, install,
-activate, or execute either runtime and does not establish runtime readiness.
+component decision distinct. The canonical serial image build compiles one
+static x86_64/AVX2 conformance candidate. Each guest independently consumes
+its decision, materializes that candidate into bounded volatile storage,
+validates its digest, ELF structure, ABI symbol, and profile, launches it for
+the current boot after bounded BOOT acceptance, and executes a deterministic
+AVX2 workload through the bounded CPU worker pool. `cpu-runtime NODE` and
+`cpu-runtime-summary` expose those stages without claiming global runtime
+readiness. This path installs
+nothing durably and `gpu.runtime` remains not required.
 
 Component development remains CMake-based. A CPU-only configuration can be
 requested explicitly:

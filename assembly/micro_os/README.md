@@ -89,6 +89,19 @@ unknown/error states reported separately. This decision does not compile,
 install, activate, register, or execute a CPU runtime and does not claim
 runtime readiness.
 
+The subsequent `cpu_runtime_assembly` service consumes the exact bounded
+decision exported into the current boot's result tmpfs. The canonical host
+image build compiles one static x86_64/AVX2 candidate serially and records its
+source, toolchain, configuration, SHA-256 digest, size, and build outcomes.
+Each guest independently copies that immutable candidate into the executable
+`/run` tmpfs, validates its provenance, digest, size, ELF architecture, static
+linkage, entry point, and ABI symbol. BOOT then accepts it only for the bounded
+test generation and launches it for one bounded probe.
+The candidate submits a deterministic AVX2 vector multiply/sum through the
+existing one-worker CPU thread pool and must return 120. Candidate production,
+BOOT validation, current-boot activation, probe success, and global readiness
+remain separate states. No runtime is installed or retained across reboot.
+
 `src/acs_reference_service.cpp` builds a separate static development service.
 For the five explicitly managed lab profiles only, it configures `eth0` with a
 fixed private address and exchanges a versioned, bounded public ACS conformance

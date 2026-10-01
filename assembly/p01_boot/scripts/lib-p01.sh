@@ -75,6 +75,14 @@ p01_validate_boot_log() {
         "${log}" || p01_fail "${mode} did not prove concurrent overlap"
     grep -Fq '"subject":"required_semantic_success","outcome":"semantic_success"' \
         "${log}" || p01_fail "${mode} did not prove required service semantics"
+    grep -Fq '"record":"cpu_runtime_build_requested"' "${log}" ||
+        p01_fail "${mode} did not prove CPU runtime build request"
+    grep -Fq '"record":"cpu_runtime_artifact_validation"' "${log}" ||
+        p01_fail "${mode} did not prove CPU runtime artifact validation"
+    grep -Fq '"record":"cpu_runtime_phase_result"' "${log}" ||
+        p01_fail "${mode} did not prove CPU runtime phase completion"
+    grep -Fq '"cpu_runtime_probe":"passed"' "${log}" ||
+        p01_fail "${mode} did not prove CPU runtime probe completion"
     grep -Fq '"subject":"optional_intentional_failure","outcome":"semantic_failure"' \
         "${log}" || p01_fail "${mode} did not prove optional bounded failure"
     grep -Fq '"subject":"timeout_probe","outcome":"timeout"' "${log}" ||
