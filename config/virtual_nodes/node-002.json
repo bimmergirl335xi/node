@@ -6,6 +6,11 @@
   "debug_enabled": false,
   "gdb_port": 1235,
   "network_enabled": true,
-  "network_peer": "node-001",
-  "mac_address": "02:00:00:00:00:02"
+  "mac_address": "02:00:00:00:00:02",
+  "ipv4_address": "10.77.0.2/24",
+  "acs_port": 39001,
+  "network_multicast_address": "230.0.0.1",
+  "network_multicast_port": 39000,
+  "network_local_address": "127.0.0.1",
+  "acs_peers": ["node-001", "node-003", "node-004", "node-005"]
 }

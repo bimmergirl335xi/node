@@ -19,8 +19,13 @@ VCPUS=${NODE_QEMU_VCPUS:-1}
 MEMORY_MB=${NODE_QEMU_MEMORY_MB:-512}
 NETWORK_ENABLED=${NODE_QEMU_NETWORK_ENABLED:-0}
 NETWORK_MAC=${NODE_QEMU_NETWORK_MAC:-}
-NETWORK_LOCAL_SOCKET_INPUT=${NODE_QEMU_NETWORK_LOCAL_SOCKET:-}
-NETWORK_PEER_SOCKET_INPUT=${NODE_QEMU_NETWORK_PEER_SOCKET:-}
+NETWORK_MULTICAST_ADDRESS=${NODE_QEMU_NETWORK_MULTICAST_ADDRESS:-}
+NETWORK_MULTICAST_PORT=${NODE_QEMU_NETWORK_MULTICAST_PORT:-}
+NETWORK_LOCAL_ADDRESS=${NODE_QEMU_NETWORK_LOCAL_ADDRESS:-}
+ACS_IPV4_ADDRESS=${NODE_QEMU_ACS_IPV4_ADDRESS:-}
+ACS_UDP_PORT=${NODE_QEMU_ACS_UDP_PORT:-}
+ACS_PEERS_A=${NODE_QEMU_ACS_PEERS_A:-}
+ACS_PEERS_B=${NODE_QEMU_ACS_PEERS_B:-}
 FIRMWARE=bios
 MAX_EVENT_COUNT=256
 MAX_EVENT_BYTES=262144
@@ -44,8 +49,8 @@ Environment:
   NODE_QEMU_OVMF_VARS        optional OVMF variable template override for --uefi
 
 The managed-node controller also supplies bounded internal environment values
-for its per-node log directory, process identity, resource limits, and private
-Unix-datagram network attachment.
+for its per-node log directory, process identity, resource limits, profile
+metadata, and loopback-confined multicast-datagram LAN attachment.
 
 Outputs:
   build/logs/qemu-last-run.log
@@ -91,29 +96,28 @@ case "${LOG_DIR}" in
     "${BUILD_ROOT}"/*) ;;
     *) fail 'NODE_QEMU_LOG_DIR must resolve beneath the repository build directory' ;;
 esac
-network_local_socket=''
-network_peer_socket=''
 if [[ ${NETWORK_ENABLED} == 1 ]]; then
     [[ -n ${NODE_ID} ]] ||
         fail 'managed network attachment requires NODE_QEMU_NODE_ID'
     [[ ${NETWORK_MAC} =~ ^02:([0-9a-f]{2}:){4}[0-9a-f]{2}$ ]] ||
         fail 'NODE_QEMU_NETWORK_MAC must be a lowercase locally administered MAC'
-    [[ -n ${NETWORK_LOCAL_SOCKET_INPUT} && -n ${NETWORK_PEER_SOCKET_INPUT} ]] ||
-        fail 'managed network attachment requires local and peer socket paths'
-    network_local_socket=$(realpath -m -- "${NETWORK_LOCAL_SOCKET_INPUT}")
-    network_peer_socket=$(realpath -m -- "${NETWORK_PEER_SOCKET_INPUT}")
-    case "${network_local_socket}" in
-        "${BUILD_ROOT}/virtual"/*) ;;
-        *) fail 'managed network local socket must resolve beneath build/virtual' ;;
-    esac
-    case "${network_peer_socket}" in
-        "${BUILD_ROOT}/virtual"/*) ;;
-        *) fail 'managed network peer socket must resolve beneath build/virtual' ;;
-    esac
-    [[ ${network_local_socket} != "${network_peer_socket}" ]] ||
-        fail 'managed network local and peer sockets must differ'
-    [[ ${network_local_socket} != *,* && ${network_peer_socket} != *,* ]] ||
-        fail 'managed network socket paths must not contain commas'
+    [[ ${NETWORK_MULTICAST_ADDRESS} =~ ^23[0-9](\.[0-9]{1,3}){3}$ ]] ||
+        fail 'NODE_QEMU_NETWORK_MULTICAST_ADDRESS must be an IPv4 multicast address'
+    [[ ${NETWORK_LOCAL_ADDRESS} =~ ^127(\.[0-9]{1,3}){3}$ ]] ||
+        fail 'NODE_QEMU_NETWORK_LOCAL_ADDRESS must be an IPv4 loopback address'
+    [[ ${ACS_IPV4_ADDRESS} =~ ^10\.77\.0\.[1-9][0-9]{0,2}$ ]] ||
+        fail 'NODE_QEMU_ACS_IPV4_ADDRESS must be a 10.77.0.0/24 host address'
+    for port_value in "${NETWORK_MULTICAST_PORT}" "${ACS_UDP_PORT}"; do
+        [[ ${port_value} =~ ^[0-9]{4,5}$ ]] &&
+            (( port_value >= 1024 && port_value <= 65535 )) ||
+            fail 'managed network ports must be integers from 1024 through 65535'
+    done
+    for peer_part in "${ACS_PEERS_A}" "${ACS_PEERS_B}"; do
+        [[ -n ${peer_part} && ${#peer_part} -le 63 && ${peer_part} != *,* ]] ||
+            fail 'managed ACS peer profile parts must be nonempty and at most 63 bytes'
+        [[ ${peer_part} =~ ^[a-z0-9-]+@10\.77\.0\.[0-9]+(\;[a-z0-9-]+@10\.77\.0\.[0-9]+)*$ ]] ||
+            fail 'managed ACS peer profile parts must contain node@IPv4 entries'
+    done
 fi
 if [[ ${DEBUG_MODE} == 1 ]]; then
     [[ ${GDB_PORT} =~ ^[0-9]{4,5}$ ]] &&
@@ -132,16 +136,11 @@ event_staging=''
 cleanup() {
     [[ -z ${uefi_vars_copy} ]] || rm -f -- "${uefi_vars_copy}"
     [[ -z ${event_staging} ]] || rm -f -- "${event_staging}"
-    [[ -z ${network_local_socket} ]] || rm -f -- "${network_local_socket}"
 }
 trap cleanup EXIT
 
 event_staging=$(mktemp "${TEMP_DIR}/qemu-boot-events.XXXXXX.jsonl")
 rm -f -- "${EVENT_LOG_PATH}"
-if [[ ${NETWORK_ENABLED} == 1 ]]; then
-    rm -f -- "${network_local_socket}"
-fi
-
 qemu_command=(
     "${QEMU_BIN}"
     -no-user-config
@@ -158,9 +157,11 @@ qemu_command=(
 )
 
 if [[ ${NETWORK_ENABLED} == 1 ]]; then
-    network_backend="dgram,id=node_lab_net,local.type=unix"
-    network_backend+=",local.path=${network_local_socket},remote.type=unix"
-    network_backend+=",remote.path=${network_peer_socket}"
+    network_backend="dgram,id=node_lab_net,remote.type=inet"
+    network_backend+=",remote.host=${NETWORK_MULTICAST_ADDRESS}"
+    network_backend+=",remote.port=${NETWORK_MULTICAST_PORT},local.type=inet"
+    network_backend+=",local.host=${NETWORK_LOCAL_ADDRESS}"
+    network_backend+=",local.port=${NETWORK_MULTICAST_PORT}"
     qemu_command+=(
         -netdev "${network_backend}"
         -device "virtio-net-pci,netdev=node_lab_net,mac=${NETWORK_MAC}"
@@ -172,9 +173,13 @@ else
 fi
 
 if [[ -n ${NODE_ID} ]]; then
+    smbios_profile="type=1,manufacturer=${ACS_PEERS_A},product=Node-Development-VM"
+    smbios_profile+=",version=acs-profile-v1-port-${ACS_UDP_PORT}"
+    smbios_profile+=",serial=${NODE_ID},sku=${ACS_IPV4_ADDRESS}"
+    smbios_profile+=",family=${ACS_PEERS_B}"
     qemu_command+=(
         -name "guest=${NODE_ID},process=${NODE_ID}"
-        -smbios "type=1,product=Node-Development-VM,serial=${NODE_ID}"
+        -smbios "${smbios_profile}"
     )
 fi
 
@@ -231,10 +236,14 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
         printf 'managed_node_id: %s\n' "${NODE_ID}"
     fi
     if [[ ${NETWORK_ENABLED} == 1 ]]; then
-        printf 'network_backend: unix_dgram_point_to_point\n'
+        printf 'network_backend: loopback_multicast_dgram_lan\n'
         printf 'network_mac: %s\n' "${NETWORK_MAC}"
-        printf 'network_local_socket: %s\n' "${network_local_socket}"
-        printf 'network_peer_socket: %s\n' "${network_peer_socket}"
+        printf 'network_multicast: %s:%s\n' \
+            "${NETWORK_MULTICAST_ADDRESS}" "${NETWORK_MULTICAST_PORT}"
+        printf 'network_local_address: %s\n' "${NETWORK_LOCAL_ADDRESS}"
+        printf 'acs_ipv4_address: %s\n' "${ACS_IPV4_ADDRESS}"
+        printf 'acs_udp_port: %s\n' "${ACS_UDP_PORT}"
+        printf 'acs_peers: %s;%s\n' "${ACS_PEERS_A}" "${ACS_PEERS_B}"
     else
         printf 'network_backend: none\n'
     fi

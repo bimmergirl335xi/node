@@ -100,7 +100,7 @@ Historical handoffs are evidence, not current authority.
 
 - general tools and probes: `tools/`
 - shell helpers: `scripts/`
-- Python utilities and the bounded two-node local VM controller: `python/`
+- Python utilities and the bounded five-node local VM controller: `python/`
 - managed development-instance and private-link profiles:
   `config/virtual_nodes/`
 - simulation code: `simulator/`

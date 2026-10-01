@@ -135,8 +135,8 @@ The public Draft ACS-0000 through ACS-0009 specifications are retained under
 `docs/architecture/acs/`. The managed development image includes one narrow
 reference use of those contracts: a static conformance service uses explicit
 registry declarations, real lifecycle transitions, advisory admission, active
-binding/attachment snapshots, bounded UDP serialization, and receiver-side
-validation across the isolated two-node lab link. It is not production-secure
+peer-specific binding/attachment snapshots, bounded UDP serialization, and
+receiver-side validation across the isolated five-node lab LAN. It is not production-secure
 and supplies no authentication, discovery, trust, routing, reservation,
 persistence, descriptor removal, private ACS behavior, or public ACS C ABI.
 
@@ -194,22 +194,25 @@ continuing preserves the same serial transcript, structured-event capture,
 bounded timeout, firmware choices, and guest shutdown behavior. Normal QEMU
 boot remains unpaused and exposes no debugger.
 
-`python/node_lab.py` provides a bounded two-instance layer around those same
-launchers. The tracked `node-001` and `node-002` profiles declare firmware,
-vCPU count, memory, unique loopback debug settings, deterministic local MACs,
-and reciprocal network peers. The controller can list, inspect, start, stop,
-restart, and observe either instance; generated state and node-local
+`python/node_lab.py` provides a bounded five-instance layer around those same
+launchers. The tracked `node-001` through `node-005` profiles declare firmware,
+vCPU count, memory, unique loopback debug settings, deterministic local MAC and
+IPv4 addresses, and the complete peer set. The controller can list, inspect,
+start, stop, restart, and observe individual instances, and can start, stop, or
+restart the profile set concurrently; generated state and node-local
 serial/JSONL logs remain disposable under `build/virtual/NODE/`. Stop
 operations require a recorded PID plus matching process-start and QEMU command
 identity, preventing a stale PID from authorizing a signal. Status reports
 observed process and boot evidence only; it does not infer service health or
-runtime readiness. The guests share one unprivileged QEMU Unix-datagram
-point-to-point Ethernet segment using `virtio-net-pci`; no host bridge, TAP,
+runtime readiness. The guests share one unprivileged QEMU datagram-multicast
+Ethernet segment bound to host loopback using `virtio-net-pci`; no host bridge, TAP,
 NAT, internet path, or persistent network state is created. The kernel already
 contains the required virtio networking support. A managed profile selector is
-passed explicitly through QEMU DMI metadata; the static conformance service
-selects fixed addresses `10.77.0.1/24` and `10.77.0.2/24`, uses UDP port
-`39001`, and attempts one bounded signal in each direction. DMI, MAC, and IP
+passed explicitly through bounded QEMU DMI metadata; the static conformance
+service creates separate binding, attachment, admission, send/receive, signal,
+and correlation evidence for each of the four peers per node. It uses profile
+addresses `10.77.0.1/24` through `10.77.0.5/24`, UDP port `39001`, and attempts
+the complete 20-direction matrix. DMI, MAC, and IP
 data select only this declared development profile and do not prove logical
 identity, trust, or authority. `node_lab.py acs-events NODE` surfaces the
 resulting public evidence without making a policy judgment. This remains a

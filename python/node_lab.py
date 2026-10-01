@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import dataclasses
 import datetime
 import fcntl
 import hashlib
+import ipaddress
 import itertools
 import json
 import os
@@ -38,8 +40,13 @@ PROFILE_KEYS = {
     "debug_enabled",
     "gdb_port",
     "network_enabled",
-    "network_peer",
     "mac_address",
+    "ipv4_address",
+    "acs_port",
+    "network_multicast_address",
+    "network_multicast_port",
+    "network_local_address",
+    "acs_peers",
 }
 NODE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,31}\Z")
 MAC_PATTERN = re.compile(r"02:([0-9a-f]{2}:){4}[0-9a-f]{2}\Z")
@@ -54,11 +61,7 @@ MAX_SERIAL_LINES = 200
 MAX_PROCESS_INSPECTIONS = 131072
 START_WAIT_SECONDS = 8.0
 STOP_WAIT_SECONDS = 5.0
-ACS_IPV4 = {
-    "node-001": "10.77.0.1/24",
-    "node-002": "10.77.0.2/24",
-}
-ACS_UDP_PORT = 39001
+MAX_PEERS = 16
 
 
 class LabError(RuntimeError):
@@ -74,8 +77,13 @@ class NodeProfile:
     debug_enabled: bool
     gdb_port: int
     network_enabled: bool
-    network_peer: str
     mac_address: str
+    ipv4_address: str
+    acs_port: int
+    network_multicast_address: str
+    network_multicast_port: int
+    network_local_address: str
+    acs_peers: tuple[str, ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -89,7 +97,6 @@ class InstancePaths:
     serial_log: Path
     event_log: Path
     controller_log: Path
-    network_socket: Path
 
 
 @dataclasses.dataclass(frozen=True)
@@ -153,8 +160,11 @@ def load_profiles() -> dict[str, NodeProfile]:
         firmware = raw["firmware"]
         debug_enabled = raw["debug_enabled"]
         network_enabled = raw["network_enabled"]
-        network_peer = raw["network_peer"]
         mac_address = raw["mac_address"]
+        ipv4_address = raw["ipv4_address"]
+        multicast_address = raw["network_multicast_address"]
+        local_address = raw["network_local_address"]
+        acs_peers = raw["acs_peers"]
         if not isinstance(node_id, str) or NODE_ID_PATTERN.fullmatch(node_id) is None:
             raise LabError(f"profile node_id is invalid: {path}")
         if path.stem != node_id:
@@ -165,14 +175,33 @@ def load_profiles() -> dict[str, NodeProfile]:
             raise LabError(f"profile debug_enabled must be a boolean: {path}")
         if not isinstance(network_enabled, bool) or not network_enabled:
             raise LabError(f"profile network_enabled must be true: {path}")
-        if (
-            not isinstance(network_peer, str)
-            or NODE_ID_PATTERN.fullmatch(network_peer) is None
-            or network_peer == node_id
-        ):
-            raise LabError(f"profile network_peer is invalid: {path}")
         if not isinstance(mac_address, str) or MAC_PATTERN.fullmatch(mac_address) is None:
             raise LabError(f"profile mac_address is invalid: {path}")
+        try:
+            parsed_ipv4 = ipaddress.IPv4Interface(ipv4_address)
+            parsed_multicast = ipaddress.IPv4Address(multicast_address)
+            parsed_local = ipaddress.IPv4Address(local_address)
+        except (TypeError, ValueError) as error:
+            raise LabError(f"profile network address is invalid: {path}: {error}") from error
+        if parsed_ipv4.network.prefixlen != 24 or parsed_ipv4.ip.is_unspecified:
+            raise LabError(f"profile ipv4_address must be a usable /24 address: {path}")
+        if not parsed_multicast.is_multicast:
+            raise LabError(f"profile network_multicast_address must be multicast: {path}")
+        if not parsed_local.is_loopback:
+            raise LabError(f"profile network_local_address must be loopback: {path}")
+        if (
+            not isinstance(acs_peers, list)
+            or not acs_peers
+            or len(acs_peers) > MAX_PEERS
+            or any(
+                not isinstance(peer, str)
+                or NODE_ID_PATTERN.fullmatch(peer) is None
+                or peer == node_id
+                for peer in acs_peers
+            )
+            or acs_peers != sorted(set(acs_peers))
+        ):
+            raise LabError(f"profile acs_peers must be a bounded sorted unique list: {path}")
         profile = NodeProfile(
             node_id=node_id,
             firmware=firmware,
@@ -181,8 +210,15 @@ def load_profiles() -> dict[str, NodeProfile]:
             debug_enabled=debug_enabled,
             gdb_port=require_int(raw["gdb_port"], "gdb_port", 1024, 65535),
             network_enabled=network_enabled,
-            network_peer=network_peer,
             mac_address=mac_address,
+            ipv4_address=str(parsed_ipv4),
+            acs_port=require_int(raw["acs_port"], "acs_port", 1024, 65535),
+            network_multicast_address=str(parsed_multicast),
+            network_multicast_port=require_int(
+                raw["network_multicast_port"], "network_multicast_port", 1024, 65535
+            ),
+            network_local_address=str(parsed_local),
+            acs_peers=tuple(acs_peers),
         )
         if node_id in profiles:
             raise LabError(f"duplicate virtual-node identity: {node_id}")
@@ -193,11 +229,21 @@ def load_profiles() -> dict[str, NodeProfile]:
     mac_addresses = [profile.mac_address for profile in profiles.values()]
     if len(mac_addresses) != len(set(mac_addresses)):
         raise LabError("virtual-node MAC addresses must be unique")
+    ipv4_addresses = [profile.ipv4_address for profile in profiles.values()]
+    if len(ipv4_addresses) != len(set(ipv4_addresses)):
+        raise LabError("virtual-node IPv4 addresses must be unique")
+    network_shapes = {
+        (profile.network_multicast_address, profile.network_multicast_port,
+         profile.network_local_address, profile.acs_port)
+        for profile in profiles.values()
+    }
+    if len(network_shapes) != 1:
+        raise LabError("virtual-node profiles must declare one shared network shape")
+    expected = set(profiles)
     for profile in profiles.values():
-        peer = profiles.get(profile.network_peer)
-        if peer is None or peer.network_peer != profile.node_id:
+        if set(profile.acs_peers) != expected - {profile.node_id}:
             raise LabError(
-                f"virtual-node network peer must be present and reciprocal: {profile.node_id}"
+                f"virtual-node ACS peers must name every other profile: {profile.node_id}"
             )
     return profiles
 
@@ -224,7 +270,6 @@ def instance_paths(profile: NodeProfile) -> InstancePaths:
         serial_log=log_dir / "qemu-last-run.log",
         event_log=log_dir / "qemu-boot-events.jsonl",
         controller_log=log_dir / "controller-launch.log",
-        network_socket=state_dir / "lab-network.sock",
     )
 
 
@@ -261,6 +306,12 @@ class InstanceLock:
 def load_state(paths: InstancePaths, profile: NodeProfile) -> dict[str, Any] | None:
     if not paths.state_file.exists():
         return None
+    try:
+        if not paths.state_file.is_symlink() and paths.state_file.is_file() and \
+                paths.state_file.stat().st_size == 0:
+            return None
+    except OSError as error:
+        raise LabError(f"cannot inspect managed-node state: {error}") from error
     raw = bounded_json(paths.state_file, MAX_STATE_BYTES, "managed-node state")
     if not isinstance(raw, dict) or raw.get("node_id") != profile.node_id:
         raise LabError(f"managed-node state identity is invalid: {paths.state_file}")
@@ -340,24 +391,44 @@ def has_argument_pair(argv: tuple[str, ...], option: str, value: str) -> bool:
 
 
 def network_arguments(profile: NodeProfile) -> tuple[str, str]:
-    local = instance_paths(profile).network_socket
-    peer = INSTANCE_ROOT / profile.network_peer / "state" / "lab-network.sock"
     netdev = (
         "dgram,id=node_lab_net,"
-        f"local.type=unix,local.path={local},"
-        f"remote.type=unix,remote.path={peer}"
+        f"remote.type=inet,remote.host={profile.network_multicast_address},"
+        f"remote.port={profile.network_multicast_port},"
+        f"local.type=inet,local.host={profile.network_local_address},"
+        f"local.port={profile.network_multicast_port}"
     )
     device = f"virtio-net-pci,netdev=node_lab_net,mac={profile.mac_address}"
     return netdev, device
 
 
 def network_attachment(profile: NodeProfile, running: ProcessInfo | None) -> str:
-    if running is None:
-        return "configured"
-    try:
-        return "attached" if instance_paths(profile).network_socket.is_socket() else "missing"
-    except OSError:
-        return "unknown"
+    return "attached" if running is not None else "configured"
+
+
+def profile_peer_encoding(profile: NodeProfile, profiles: dict[str, NodeProfile]) -> str:
+    return ";".join(
+        f"{peer}@{profiles[peer].ipv4_address.split('/', 1)[0]}"
+        for peer in profile.acs_peers
+    )
+
+
+def profile_peer_parts(
+    profile: NodeProfile, profiles: dict[str, NodeProfile]
+) -> tuple[str, str]:
+    entries = profile_peer_encoding(profile, profiles).split(";")
+    midpoint = (len(entries) + 1) // 2
+    return ";".join(entries[:midpoint]), ";".join(entries[midpoint:])
+
+
+def smbios_argument(profile: NodeProfile, profiles: dict[str, NodeProfile]) -> str:
+    peers_a, peers_b = profile_peer_parts(profile, profiles)
+    return (
+        f"type=1,manufacturer={peers_a},product=Node-Development-VM,"
+        f"version=acs-profile-v1-port-{profile.acs_port},"
+        f"serial={profile.node_id},sku={profile.ipv4_address.split('/', 1)[0]},"
+        f"family={peers_b}"
+    )
 
 
 def matches_managed_qemu(
@@ -368,7 +439,7 @@ def matches_managed_qemu(
     executable = Path(info.argv[0]).name
     marker = f"guest={profile.node_id},process={profile.node_id}"
     netdev, device = network_arguments(profile)
-    smbios = f"type=1,product=Node-Development-VM,serial={profile.node_id}"
+    smbios = smbios_argument(profile, load_profiles())
     return (
         executable.startswith("qemu-system-")
         and has_argument_pair(info.argv, "-name", marker)
@@ -530,10 +601,13 @@ def launch_command(profile: NodeProfile, debug: bool) -> list[str]:
     return [str(RUN_LAUNCHER), firmware]
 
 
-def start_node(profile: NodeProfile, force_debug: bool) -> None:
+def start_node(
+    profile: NodeProfile, force_debug: bool, *, emit_output: bool = True,
+    known_iso_sha: str | None = None
+) -> dict[str, Any]:
     paths = instance_paths(profile)
     with InstanceLock(paths):
-        iso_sha = validate_iso()
+        iso_sha = known_iso_sha if known_iso_sha is not None else validate_iso()
         state, running, _ = reconcile(profile, paths)
         if running is not None:
             raise LabError(f"{profile.node_id} is already running as QEMU PID {running.pid}")
@@ -567,10 +641,16 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
             "NODE_QEMU_TIMEOUT_SECONDS",
             "NODE_QEMU_NETWORK_ENABLED",
             "NODE_QEMU_NETWORK_MAC",
-            "NODE_QEMU_NETWORK_LOCAL_SOCKET",
-            "NODE_QEMU_NETWORK_PEER_SOCKET",
+            "NODE_QEMU_NETWORK_MULTICAST_ADDRESS",
+            "NODE_QEMU_NETWORK_MULTICAST_PORT",
+            "NODE_QEMU_NETWORK_LOCAL_ADDRESS",
+            "NODE_QEMU_ACS_IPV4_ADDRESS",
+            "NODE_QEMU_ACS_UDP_PORT",
+            "NODE_QEMU_ACS_PEERS_A",
+            "NODE_QEMU_ACS_PEERS_B",
         ):
             environment.pop(name, None)
+        peers_a, peers_b = profile_peer_parts(profile, load_profiles())
         environment.update(
             {
                 "NODE_QEMU_LOG_DIR": str(paths.log_dir),
@@ -580,13 +660,13 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
                 "NODE_QEMU_TIMEOUT_SECONDS": "600" if debug else "90",
                 "NODE_QEMU_NETWORK_ENABLED": "1",
                 "NODE_QEMU_NETWORK_MAC": profile.mac_address,
-                "NODE_QEMU_NETWORK_LOCAL_SOCKET": str(paths.network_socket),
-                "NODE_QEMU_NETWORK_PEER_SOCKET": str(
-                    INSTANCE_ROOT
-                    / profile.network_peer
-                    / "state"
-                    / "lab-network.sock"
-                ),
+                "NODE_QEMU_NETWORK_MULTICAST_ADDRESS": profile.network_multicast_address,
+                "NODE_QEMU_NETWORK_MULTICAST_PORT": str(profile.network_multicast_port),
+                "NODE_QEMU_NETWORK_LOCAL_ADDRESS": profile.network_local_address,
+                "NODE_QEMU_ACS_IPV4_ADDRESS": profile.ipv4_address.split("/", 1)[0],
+                "NODE_QEMU_ACS_UDP_PORT": str(profile.acs_port),
+                "NODE_QEMU_ACS_PEERS_A": peers_a,
+                "NODE_QEMU_ACS_PEERS_B": peers_b,
             }
         )
         command = launch_command(profile, debug)
@@ -622,9 +702,10 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
             "firmware": profile.firmware,
             "vcpus": profile.vcpus,
             "memory_mb": profile.memory_mb,
-            "network_backend": "unix_dgram_point_to_point",
-            "network_peer": profile.network_peer,
-            "network_socket": str(paths.network_socket),
+            "network_backend": "loopback_multicast_dgram_lan",
+            "network_multicast_address": profile.network_multicast_address,
+            "network_multicast_port": profile.network_multicast_port,
+            "acs_peers": list(profile.acs_peers),
             "mac_address": profile.mac_address,
             "debug_enabled": debug,
             "gdb_endpoint": f"127.0.0.1:{profile.gdb_port}" if debug else None,
@@ -688,24 +769,59 @@ def start_node(profile: NodeProfile, force_debug: bool) -> None:
         )
         write_state(paths, running_state)
         atomic_text(paths.pid_file, f"{qemu.pid}\n")
-        print(f"started: {profile.node_id}")
-        print(f"qemu_pid: {qemu.pid}")
-        print(f"firmware: {profile.firmware}")
-        print(f"debug_enabled: {str(debug).lower()}")
-        print(f"network_attachment: {network_attachment(profile, qemu)}")
-        print(f"network_peer: {profile.network_peer}")
-        print(f"mac_address: {profile.mac_address}")
-        print(f"acs_reference_address: {ACS_IPV4[profile.node_id]}")
-        print(f"acs_reference_udp_port: {ACS_UDP_PORT}")
-        print(f"serial_log: {paths.serial_log}")
-        print(f"event_log: {paths.event_log}")
+        result = {
+            "node_id": profile.node_id,
+            "qemu_pid": qemu.pid,
+            "firmware": profile.firmware,
+            "debug_enabled": debug,
+            "network_attachment": network_attachment(profile, qemu),
+            "acs_peers": list(profile.acs_peers),
+            "mac_address": profile.mac_address,
+            "acs_reference_address": profile.ipv4_address,
+            "acs_reference_udp_port": profile.acs_port,
+            "serial_log": str(paths.serial_log),
+            "event_log": str(paths.event_log),
+        }
+        if emit_output:
+            print_start_result(result)
+        return result
 
 
-def stop_node(profile: NodeProfile, allow_stopped: bool = True) -> None:
+def print_start_result(result: dict[str, Any]) -> None:
+    print(f"started: {result['node_id']}")
+    for key in (
+        "qemu_pid", "firmware", "debug_enabled", "network_attachment",
+        "acs_peers", "mac_address", "acs_reference_address",
+        "acs_reference_udp_port", "serial_log", "event_log"
+    ):
+        value = result[key]
+        if isinstance(value, bool):
+            value = str(value).lower()
+        elif isinstance(value, list):
+            value = ",".join(value)
+        print(f"{key}: {value}")
+
+
+def stop_node(
+    profile: NodeProfile, allow_stopped: bool = True, *, emit_output: bool = True
+) -> dict[str, Any]:
     paths = instance_paths(profile)
     with InstanceLock(paths):
         state = load_state(paths, profile)
         info, reason = state_process(state, profile)
+        if info is None:
+            active_launcher = launcher_process(state)
+            if active_launcher is not None:
+                recovered = find_managed_qemu(
+                    profile, ISO_PATH, ancestor_pid=active_launcher.pid
+                )
+                if len(recovered) > 1:
+                    raise LabError(
+                        "refused to stop multiple QEMU children under the recorded launcher"
+                    )
+                if recovered:
+                    info = recovered[0]
+                    reason = "recovered_launcher_child"
         if info is None:
             if state is not None:
                 write_state(paths, stopped_state(profile, state, reason))
@@ -715,8 +831,10 @@ def stop_node(profile: NodeProfile, allow_stopped: bool = True) -> None:
                     f"refused to signal recorded PID because identity verification failed: {reason}"
                 )
             if allow_stopped:
-                print(f"already stopped: {profile.node_id}")
-                return
+                result = {"node_id": profile.node_id, "already_stopped": True, "qemu_pid": None}
+                if emit_output:
+                    print(f"already stopped: {profile.node_id}")
+                return result
             raise LabError(f"{profile.node_id} is already stopped ({reason})")
 
         try:
@@ -766,10 +884,18 @@ def stop_node(profile: NodeProfile, allow_stopped: bool = True) -> None:
             ),
         )
         remove_pid_file(paths)
-        print(f"stopped: {profile.node_id}")
-        print(f"qemu_pid: {info.pid}")
-        if not launcher_finished:
-            print("launcher_state: finalizing")
+        result = {
+            "node_id": profile.node_id,
+            "already_stopped": False,
+            "qemu_pid": info.pid,
+            "launcher_finalizing": not launcher_finished,
+        }
+        if emit_output:
+            print(f"stopped: {profile.node_id}")
+            print(f"qemu_pid: {info.pid}")
+            if not launcher_finished:
+                print("launcher_state: finalizing")
+        return result
 
 
 def read_events(paths: InstancePaths) -> tuple[list[dict[str, Any]], list[str]]:
@@ -855,11 +981,11 @@ def print_status(profile: NodeProfile) -> None:
         print(f"latest_shutdown_outcome: {shutdown}")
         print(f"boot_state: {final}")
         print(f"network_attachment: {network_attachment(profile, info)}")
-        print(f"network_backend: unix_dgram_point_to_point")
-        print(f"network_peer: {profile.network_peer}")
+        print("network_backend: loopback_multicast_dgram_lan")
+        print(f"acs_peers: {','.join(profile.acs_peers)}")
         print(f"mac_address: {profile.mac_address}")
-        print(f"acs_reference_address: {ACS_IPV4[profile.node_id]}")
-        print(f"acs_reference_udp_port: {ACS_UDP_PORT}")
+        print(f"acs_reference_address: {profile.ipv4_address}")
+        print(f"acs_reference_udp_port: {profile.acs_port}")
         print(f"serial_log: {paths.serial_log}")
         print(f"event_log: {paths.event_log}")
         print(f"debug_enabled: {str(debug).lower()}")
@@ -880,6 +1006,95 @@ def print_list() -> None:
             f"{info.pid if info else '-'}\t{profile.firmware}\t{final}\t"
             f"{network_attachment(profile, info)}"
         )
+
+
+def run_group_operation(operation: str, force_debug: bool = False) -> None:
+    profiles = load_profiles()
+    ordered = [profiles[node_id] for node_id in sorted(profiles)]
+    iso_sha = validate_iso() if operation in ("start", "restart") else None
+
+    def invoke(profile: NodeProfile) -> dict[str, Any]:
+        if operation == "start":
+            return start_node(
+                profile, force_debug, emit_output=False, known_iso_sha=iso_sha
+            )
+        if operation == "stop":
+            return stop_node(profile, emit_output=False)
+        stop_node(profile, emit_output=False)
+        return start_node(
+            profile, force_debug, emit_output=False, known_iso_sha=iso_sha
+        )
+
+    results: dict[str, dict[str, Any]] = {}
+    failures: dict[str, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(ordered), 16)) as pool:
+        pending = {pool.submit(invoke, profile): profile for profile in ordered}
+        for future in concurrent.futures.as_completed(pending):
+            profile = pending[future]
+            try:
+                results[profile.node_id] = future.result()
+            except (LabError, OSError) as error:
+                failures[profile.node_id] = str(error)
+    for profile in ordered:
+        if profile.node_id in failures:
+            print(f"{operation}-failed: {profile.node_id}: {failures[profile.node_id]}")
+        elif operation == "stop":
+            result = results[profile.node_id]
+            verb = "already-stopped" if result["already_stopped"] else "stopped"
+            print(f"{verb}: {profile.node_id}")
+        else:
+            result = results[profile.node_id]
+            print(
+                f"started: {profile.node_id} qemu_pid={result['qemu_pid']} "
+                f"network={result['network_attachment']}"
+            )
+    if failures:
+        raise LabError(
+            f"{operation}-all completed with {len(failures)} isolated failure(s)"
+        )
+
+
+def peer_validation_state(profile: NodeProfile) -> tuple[set[str], list[str]]:
+    events, malformed = read_events(instance_paths(profile))
+    valid: set[str] = set()
+    for event in events:
+        if (
+            event.get("record") == "acs_signal_validation_result"
+            and event.get("local") == profile.node_id
+            and event.get("outcome") == "valid"
+            and event.get("peer") in profile.acs_peers
+        ):
+            valid.add(str(event["peer"]))
+    return valid, malformed
+
+
+def print_group_status() -> None:
+    profiles = load_profiles()
+    print("NODE ID\tSTATE\tNETWORK\tVALID PEERS\tACS RESULT")
+    complete = True
+    for node_id in sorted(profiles):
+        profile = profiles[node_id]
+        paths = instance_paths(profile)
+        with InstanceLock(paths):
+            _, info, _ = reconcile(profile, paths)
+            try:
+                valid, malformed = peer_validation_state(profile)
+            except LabError:
+                valid, malformed = set(), ["unavailable"]
+        missing = [peer for peer in profile.acs_peers if peer not in valid]
+        if malformed:
+            result = "malformed_evidence"
+        elif missing:
+            result = "incomplete:" + ",".join(missing)
+        else:
+            result = "complete"
+        complete = complete and not missing and not malformed
+        print(
+            f"{node_id}\t{'running' if info else 'stopped'}\t"
+            f"{network_attachment(profile, info)}\t{len(valid)}/{len(profile.acs_peers)}\t"
+            f"{result}"
+        )
+    print(f"group_acs_exchange: {'complete' if complete else 'incomplete'}")
 
 
 def print_events(profile: NodeProfile, limit: int) -> None:
@@ -967,6 +1182,14 @@ def parser() -> argparse.ArgumentParser:
     )
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list configured managed virtual nodes")
+    commands.add_parser("group-status", help="summarize bounded five-node ACS evidence")
+    commands.add_parser("stop-all", help="concurrently stop every managed node")
+    start_all = commands.add_parser("start-all", help="concurrently start every managed node")
+    start_all.add_argument("--debug", action="store_true")
+    restart_all = commands.add_parser(
+        "restart-all", help="concurrently restart every managed node"
+    )
+    restart_all.add_argument("--debug", action="store_true")
     for name in ("status", "stop", "debug-info"):
         command = commands.add_parser(name)
         command.add_argument("node_id")
@@ -997,6 +1220,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "list":
             print_list()
+            return 0
+        if args.command == "group-status":
+            print_group_status()
+            return 0
+        if args.command == "start-all":
+            run_group_operation("start", args.debug)
+            return 0
+        if args.command == "stop-all":
+            run_group_operation("stop")
+            return 0
+        if args.command == "restart-all":
+            run_group_operation("restart", args.debug)
             return 0
         profile = select_profile(args.node_id)
         if args.command == "status":

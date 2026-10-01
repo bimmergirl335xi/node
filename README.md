@@ -22,7 +22,7 @@ replace the legacy robot loop.
 - service lifecycle, adaptive-state, architecture-shadow, and proposal-ABI
   foundations;
 - bounded public ACS descriptors, registry, lifecycle state, and pure admission
-  evaluation, plus an isolated two-node reference transport;
+  evaluation, plus an isolated five-node multi-peer reference transport;
 - a static C11 PID 1 micro-OS and P01 candidate-image tooling;
 - a RAM-only assembly mechanism proof and a public external-component ABI.
 
@@ -168,20 +168,23 @@ extension with `build/artifacts/vmlinux` as the program and
 `127.0.0.1:1234` as the remote target, then continue execution from the
 debugger UI; no workspace configuration is required or tracked.
 
-The managed development instances are declared by
-`config/virtual_nodes/node-001.json` and `node-002.json`. A bounded Python
-standard-library controller discovers both profiles and wraps the same
+The five managed development instances are declared under
+`config/virtual_nodes/`. A bounded Python standard-library controller discovers
+the profiles and wraps the same
 launchers without replacing their boot contract:
 
 ```sh
 ./python/node_lab.py list
+./python/node_lab.py start-all
+./python/node_lab.py group-status
 ./python/node_lab.py status node-001
 ./python/node_lab.py start node-001
-./python/node_lab.py start node-002
 ./python/node_lab.py events node-001
 ./python/node_lab.py acs-events node-001
 ./python/node_lab.py serial node-001
 ./python/node_lab.py stop node-001
+./python/node_lab.py restart-all
+./python/node_lab.py stop-all
 ```
 
 `restart`, `acs-events`, and `debug-info` are also available, and
@@ -190,15 +193,16 @@ the paused DEV-001D workflow with profile-specific loopback GDB ports.
 Generated PID/state records and per-node serial/event logs live only beneath
 `build/virtual/NODE/`. Before stopping an instance, the controller verifies
 the recorded PID, Linux process-start identity, managed QEMU marker, canonical
-ISO argument, and exact private-network arguments. The two managed guests have
-deterministic locally administered MAC addresses and a private point-to-point
-Ethernet segment carried by QEMU Unix datagram sockets under `build/virtual/`.
-It has no NAT, host bridge, TAP,
+ISO argument, and exact private-network arguments. The five managed guests have
+deterministic locally administered MAC and IPv4 addresses on one QEMU datagram
+multicast Ethernet segment confined to host loopback. It has no NAT, host bridge, TAP,
 internet access, or host-LAN listener. Managed guests use only the fixed
-development addresses `10.77.0.1/24` and `10.77.0.2/24` and UDP port `39001`
-to exchange a bounded `public.transport.conformance` signal. Both directions
+development range `10.77.0.1/24` through `10.77.0.5/24` and UDP port `39001`
+to exchange bounded `public.transport.conformance` signals. All 20 directed paths
 are structurally validated against public ACS registry, lifecycle, admission,
-binding, attachment, and envelope evidence. This unencrypted reference path is
+peer-specific binding, attachment, correlation, and envelope evidence. `start-all`
+and `restart-all` launch concurrently; `group-status` reports success only from
+structured peer validation records. This unencrypted reference path is
 isolated development/conformance transport, not peer discovery, authentication,
 a production-secure session, a cluster, or a private ACS control plane. The
 direct build, normal QEMU, and debug launchers remain independently usable and
