@@ -14,7 +14,8 @@ individual files and all generated output.
 ## Boot and micro-OS
 
 - overall assembly boundary: `assembly/README.md`
-- permanent PID 1 and startup manifest: `assembly/micro_os/`
+- permanent PID 1, startup manifest, and BOOT-owned first-boot CPU requirement
+  evaluator: `assembly/micro_os/`
 - P01 candidate image and QEMU proof: `assembly/p01_boot/`
 - PID 1 sequencing contract: `assembly/init/`
 - RAM-only kernel/initramfs proof: `assembly/ram_assembly_p0/`
@@ -100,7 +101,8 @@ Historical handoffs are evidence, not current authority.
 
 - general tools and probes: `tools/`
 - shell helpers: `scripts/`
-- Python utilities and the bounded five-node local VM controller: `python/`
+- Python utilities and the bounded five-node local VM/CPU-evidence controller:
+  `python/`
 - managed development-instance and private-link profiles:
   `config/virtual_nodes/`
 - simulation code: `simulator/`

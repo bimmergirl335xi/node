@@ -76,11 +76,21 @@ external components, private components, and directory discovery are absent.
 `src/p01_probe.c` builds eight separate static executables: identity,
 volatile-filesystem, two 300 ms concurrent-delay, required semantic-success,
 optional intentional-failure, timeout/escalation, and signal-termination
-probes. These are public conformance probes, not CPU, GPU, ACS, network, or
-production runtime providers.
+probes. These remain public conformance probes, not production runtime
+providers.
+
+`src/cpu_assembly_service.cpp` is a narrow first-boot adapter over the existing
+generic CPU topology and capability providers. On every guest boot it records
+fresh, bounded observation and normalized-capability evidence, then passes that
+evidence to the pure BOOT-owned evaluator in
+`src/node_cpu_assembly_decision.cpp`. The current bounded component set marks
+`cpu.runtime` required and `gpu.runtime` not required, with compatibility and
+unknown/error states reported separately. This decision does not compile,
+install, activate, register, or execute a CPU runtime and does not claim
+runtime readiness.
 
 `src/acs_reference_service.cpp` builds a separate static development service.
-For the two explicitly managed lab profiles only, it configures `eth0` with a
+For the five explicitly managed lab profiles only, it configures `eth0` with a
 fixed private address and exchanges a versioned, bounded public ACS conformance
 signal over UDP. It exercises the public registry, lifecycle, admission,
 binding, attachment, envelope, wire-validation, and structured-evidence paths.

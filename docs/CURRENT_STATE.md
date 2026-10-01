@@ -48,10 +48,15 @@ EFI variables, or grants an artifact production authority.
   deadlines, restart limits, process groups, `signalfd`, and complete reaping;
 - supervises exact executables under `/node/services/` without shell or `PATH`
   discovery;
+- invokes the existing generic CPU providers on every boot and evaluates their
+  bounded evidence through a BOOT-owned CPU-only component-set decision;
 - emits human-readable and JSONL evidence to console/serial channels.
 
-The included services are conformance probes. They are not production CPU,
-GPU, ACS, network, or application providers.
+The CPU decision records observation, normalized capabilities, selected SIMD
+profile, `cpu.runtime=required`, and `gpu.runtime=not_required` as distinct
+facts. It neither compiles nor activates a runtime, and therefore does not
+establish readiness. The remaining included services are conformance probes;
+none are production CPU, GPU, ACS, network, or application providers.
 
 ## Current assembly state
 
@@ -217,6 +222,11 @@ data select only this declared development profile and do not prove logical
 identity, trust, or authority. `node_lab.py acs-events NODE` surfaces the
 resulting public evidence without making a policy judgment. This remains a
 disposable reference transport, not a cluster or ACS control plane.
+
+`node_lab.py cpu-info NODE` reads the bounded node-local CPU JSONL records and
+reports only explicit observations and decisions. `cpu-summary` compares the
+five managed nodes without inferring missing evidence. CPU inspection remains
+separate from runtime selection, assembly, activation, and readiness.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.

@@ -123,6 +123,21 @@ environment=LANG=C,LC_ALL=C
 service_end
 
 service_begin
+identity=cpu_assembly_decision
+revision=p01-service:cpu_assembly_decision:1
+executable=/node/services/cpu_assembly_decision
+stage=runtime_handoff
+required=true
+timeout_ms=5000
+expected_result=exit_zero
+dependencies=required_semantic_success
+restart_policy=none
+maximum_restart_count=0
+arguments=
+environment=LANG=C,LC_ALL=C
+service_end
+
+service_begin
 identity=acs_reference_transport
 revision=p01-service:acs_reference_transport:1
 executable=/node/services/acs_reference_transport
@@ -130,7 +145,7 @@ stage=runtime_handoff
 required=true
 timeout_ms=30000
 expected_result=exit_zero
-dependencies=required_semantic_success
+dependencies=cpu_assembly_decision
 restart_policy=none
 maximum_restart_count=0
 arguments=

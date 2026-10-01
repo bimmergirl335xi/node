@@ -46,6 +46,49 @@ node_p01_add_probe(node_p01_optional_intentional_failure optional_intentional_fa
 node_p01_add_probe(node_p01_timeout_probe timeout_probe 7)
 node_p01_add_probe(node_p01_signal_termination_probe signal_termination_probe 8)
 
+add_library(
+    node_boot_cpu_assembly_decision
+    STATIC
+        src/node_cpu_assembly_decision.cpp
+)
+target_include_directories(
+    node_boot_cpu_assembly_decision
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_link_libraries(
+    node_boot_cpu_assembly_decision
+    PUBLIC
+        prometheus_cpu_foundation
+)
+target_compile_features(node_boot_cpu_assembly_decision PUBLIC cxx_std_17)
+target_compile_options(
+    node_boot_cpu_assembly_decision
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+
+add_executable(
+    node_p01_cpu_assembly_decision
+    src/cpu_assembly_service.cpp
+)
+target_link_libraries(
+    node_p01_cpu_assembly_decision
+    PRIVATE
+        node_boot_cpu_assembly_decision
+)
+target_compile_features(node_p01_cpu_assembly_decision PRIVATE cxx_std_17)
+target_compile_options(
+    node_p01_cpu_assembly_decision
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+target_link_options(node_p01_cpu_assembly_decision PRIVATE -static)
+set_target_properties(
+    node_p01_cpu_assembly_decision
+    PROPERTIES
+        OUTPUT_NAME cpu_assembly_decision
+        RUNTIME_OUTPUT_DIRECTORY "${NODE_P01_ROOT}/node/services"
+)
+
 add_executable(
     node_p01_acs_reference_transport
     src/acs_reference_service.cpp
@@ -84,6 +127,22 @@ if(PROMETHEUS_BUILD_TESTS)
         PRIVATE -Wall -Wextra -Wpedantic -Werror
     )
     add_test(NAME p01_manifest_contract COMMAND node_p01_manifest_tests)
+    add_executable(
+        node_cpu_assembly_decision_tests
+        tests/test_cpu_assembly_decision.cpp
+    )
+    target_link_libraries(
+        node_cpu_assembly_decision_tests
+        PRIVATE node_boot_cpu_assembly_decision
+    )
+    target_compile_options(
+        node_cpu_assembly_decision_tests
+        PRIVATE -Wall -Wextra -Wpedantic -Werror
+    )
+    add_test(
+        NAME p01_cpu_assembly_decision
+        COMMAND node_cpu_assembly_decision_tests
+    )
     add_test(
         NAME p01_supervisor_host
         COMMAND

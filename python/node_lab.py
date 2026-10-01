@@ -1130,6 +1130,103 @@ def print_acs_events(profile: NodeProfile, limit: int) -> None:
         raise LabError(f"event log contains {len(malformed)} malformed record(s)")
 
 
+def cpu_evidence_summary(profile: NodeProfile) -> dict[str, str]:
+    paths = instance_paths(profile)
+    events, malformed = read_events(paths)
+    if malformed:
+        raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+    selected = {
+        "topology": None,
+        "capability": None,
+        "profile": None,
+        "cpu_runtime": None,
+        "gpu_runtime": None,
+        "result": None,
+    }
+    for event in events:
+        if event.get("subject") != profile.node_id:
+            continue
+        record = event.get("record")
+        if record == "cpu_topology_observed":
+            selected["topology"] = event
+        elif record == "cpu_capability_observed":
+            selected["capability"] = event
+        elif record == "cpu_profile_evaluation":
+            selected["profile"] = event
+        elif record == "component_requirement":
+            component = event.get("component")
+            if component == "cpu.runtime":
+                selected["cpu_runtime"] = event
+            elif component == "gpu.runtime":
+                selected["gpu_runtime"] = event
+        elif record == "assembly_requirement_result":
+            selected["result"] = event
+    if not all(selected.values()):
+        missing = ",".join(key for key, value in selected.items() if value is None)
+        raise LabError(f"CPU assembly evidence is incomplete for {profile.node_id}: {missing}")
+
+    def field(section: str, key: str) -> str:
+        value = selected[section].get(key, "unknown")  # type: ignore[union-attr]
+        if isinstance(value, bool):
+            return str(value).lower()
+        if isinstance(value, (str, int)):
+            return str(value)[:128]
+        return "unknown"
+
+    return {
+        "node_id": profile.node_id,
+        "topology_observation": field("topology", "outcome"),
+        "configured_logical_processors": field("topology", "configured"),
+        "online_logical_processors": field("topology", "online"),
+        "process_allowed_logical_processors": field("topology", "process_allowed"),
+        "packages": field("topology", "packages"),
+        "physical_cores": field("topology", "physical_cores"),
+        "numa_nodes": field("topology", "numa_nodes"),
+        "smt": field("topology", "smt"),
+        "capability_observation": field("capability", "outcome"),
+        "architecture": field("capability", "architecture"),
+        "vendor": field("capability", "vendor"),
+        "pointer_bits": field("capability", "pointer_bits"),
+        "observed_simd": field("capability", "common_simd"),
+        "atomic_u64": field("capability", "atomic_u64"),
+        "selected_profile": field("profile", "profile"),
+        "profile_evaluation": field("profile", "outcome"),
+        "cpu_runtime": field("cpu_runtime", "outcome"),
+        "gpu_runtime": field("gpu_runtime", "outcome"),
+        "assembly_requirement_result": field("result", "outcome"),
+        "runtime_compiled": field("result", "runtime_compiled"),
+        "runtime_activated": field("result", "runtime_activated"),
+        "evidence_log": str(paths.event_log),
+    }
+
+
+def print_cpu_info(profile: NodeProfile) -> None:
+    summary = cpu_evidence_summary(profile)
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+
+
+def print_cpu_summary() -> None:
+    profiles = load_profiles()
+    print("NODE ID\tCPU\tPROFILE\tCPU RUNTIME\tGPU RUNTIME\tEVALUATION")
+    incomplete = False
+    for node_id in sorted(profiles):
+        profile = profiles[node_id]
+        try:
+            summary = cpu_evidence_summary(profile)
+            print(
+                f"{node_id}\t{summary['architecture']}\t"
+                f"{summary['selected_profile']}\t{summary['cpu_runtime']}\t"
+                f"{summary['gpu_runtime']}\t"
+                f"{summary['assembly_requirement_result']}"
+            )
+        except LabError as error:
+            incomplete = True
+            print(f"{node_id}\tnot_observed\t-\t-\t-\t{error}")
+    if incomplete:
+        raise LabError("one or more managed nodes lack complete CPU evidence")
+
+
 def print_serial(profile: NodeProfile, lines: int) -> None:
     path = instance_paths(profile).serial_log
     try:
@@ -1183,6 +1280,7 @@ def parser() -> argparse.ArgumentParser:
     commands = root.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="list configured managed virtual nodes")
     commands.add_parser("group-status", help="summarize bounded five-node ACS evidence")
+    commands.add_parser("cpu-summary", help="summarize five-node CPU decisions")
     commands.add_parser("stop-all", help="concurrently stop every managed node")
     start_all = commands.add_parser("start-all", help="concurrently start every managed node")
     start_all.add_argument("--debug", action="store_true")
@@ -1190,7 +1288,7 @@ def parser() -> argparse.ArgumentParser:
         "restart-all", help="concurrently restart every managed node"
     )
     restart_all.add_argument("--debug", action="store_true")
-    for name in ("status", "stop", "debug-info"):
+    for name in ("status", "stop", "debug-info", "cpu-info"):
         command = commands.add_parser(name)
         command.add_argument("node_id")
     for name in ("start", "restart"):
@@ -1224,6 +1322,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "group-status":
             print_group_status()
             return 0
+        if args.command == "cpu-summary":
+            print_cpu_summary()
+            return 0
         if args.command == "start-all":
             run_group_operation("start", args.debug)
             return 0
@@ -1247,6 +1348,8 @@ def main(argv: list[str] | None = None) -> int:
             print_events(profile, args.limit)
         elif args.command == "acs-events":
             print_acs_events(profile, args.limit)
+        elif args.command == "cpu-info":
+            print_cpu_info(profile)
         elif args.command == "serial":
             print_serial(profile, args.lines)
         elif args.command == "debug-info":

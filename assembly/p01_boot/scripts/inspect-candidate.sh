@@ -16,7 +16,9 @@ for member in init etc/node-p01/p01-public-startup-v1.manifest \
     node/services/concurrent_delay_a node/services/concurrent_delay_b \
     node/services/required_semantic_success \
     node/services/optional_intentional_failure node/services/timeout_probe \
-    node/services/signal_termination_probe; do
+    node/services/signal_termination_probe \
+    node/services/cpu_assembly_decision \
+    node/services/acs_reference_transport; do
     grep -Eq "^(\\./)?${member}$" "${validation}/initramfs.list" ||
         p01_fail "initramfs member missing: ${member}"
 done
