@@ -245,7 +245,8 @@ behavior, remote listener, per-node symbols, or persistent debugger state.
 
 `python/node_lab.py` provides a bounded five-instance layer around those same
 launchers. The tracked `node-001` through `node-005` profiles declare firmware,
-vCPU count, memory, unique loopback debug settings, deterministic local MAC and
+explicit socket/core/thread topology and vCPU count, memory, unique loopback
+debug settings, deterministic local MAC and
 IPv4 addresses, and the complete peer set. The controller can list, inspect,
 start, stop, restart, and observe individual instances, and can start, stop, or
 restart the profile set concurrently; generated state and node-local
@@ -279,8 +280,11 @@ signal-driven resident shutdown path, but this phase adds no guest control
 protocol and therefore does not claim that host-initiated stops exercise it.
 
 `node_lab.py cpu-info NODE` reads the bounded node-local CPU JSONL records and
-reports only explicit observations and decisions. `cpu-summary` compares the
-five managed nodes without inferring missing evidence. CPU inspection remains
+reports only explicit observations and decisions. `cpu-summary` compares actual
+package, core, logical-processor, SMT, allowed-CPU, resident-worker, and probe
+evidence across the five managed nodes without inferring missing evidence. The
+resident pool uses one bounded worker per freshly observed process-allowed CPU,
+including the valid one-worker fallback. CPU inspection remains
 separate from runtime selection, assembly, activation, and readiness.
 `cpu-runtime NODE` and `cpu-runtime-summary` similarly expose the distinct
 build request, candidate, validation, activation, and probe outcomes. They do

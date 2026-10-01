@@ -10,6 +10,7 @@ namespace node::boot {
 
 inline constexpr std::size_t kCpuRuntimeArtifactMaximumBytes = 4U * 1024U * 1024U;
 inline constexpr std::size_t kCpuRuntimeProvenanceMaximumBytes = 4096U;
+inline constexpr std::size_t kCpuRuntimeMaximumWorkers = 16U;
 inline constexpr std::string_view kCpuRuntimeComponentIdentity = "node.cpu.runtime";
 inline constexpr std::string_view kCpuRuntimeAbiIdentity =
     "node.cpu-runtime.conformance.v1";
@@ -109,6 +110,11 @@ struct CpuRuntimeProcessEvidence {
 };
 
 [[nodiscard]] bool bounded_identity(std::string_view value) noexcept;
+[[nodiscard]] std::size_t select_cpu_runtime_worker_count(
+    std::size_t allowed_logical_processors) noexcept;
+[[nodiscard]] bool valid_cpu_runtime_worker_count(
+    std::size_t allowed_logical_processors,
+    std::size_t worker_count) noexcept;
 [[nodiscard]] CpuRuntimeBuildCode validate_cpu_runtime_build_request(
     const CpuRuntimeBuildRequest& request) noexcept;
 [[nodiscard]] CpuRuntimeBuildCode evaluate_cpu_runtime_build(

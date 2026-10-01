@@ -8,10 +8,12 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <charconv>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "cpu_thread_pool.hpp"
 
@@ -23,6 +25,7 @@ namespace {
 
 constexpr char kAbiIdentity[] = "node.cpu-runtime.conformance.v1";
 constexpr std::uint64_t kExpectedProbeResult = 120;
+constexpr std::size_t kMaximumWorkers = 16;
 constexpr char kReadyPath[] =
     "/run/node-p01-results/cpu_runtime_assembly.ready";
 constexpr char kHealthyPath[] =
@@ -99,15 +102,39 @@ std::uint64_t avx2_probe() noexcept {
     return total;
 }
 
-bool execute_probe(cpu::CpuThreadPool& pool, std::uint64_t& observed) {
+bool parse_worker_count(const char* value, std::size_t& output) noexcept {
+    if (value == nullptr || value[0] == '\0') return false;
+    const std::size_t length = std::strlen(value);
+    const auto parsed = std::from_chars(value, value + length, output);
+    return parsed.ec == std::errc{} && parsed.ptr == value + length &&
+           output >= 1 && output <= kMaximumWorkers;
+}
+
+bool execute_probe(cpu::CpuThreadPool& pool,
+                   std::size_t job_count,
+                   std::uint64_t& observed,
+                   std::size_t& completed) {
     std::atomic<std::uint64_t> result{0};
-    const cpu::CpuTaskSubmissionResult submission =
-        pool.submit([&result]() { result.store(avx2_probe()); });
-    if (!submission.accepted() ||
-        !submission.handle.wait_for(std::chrono::seconds{1}) ||
-        !submission.handle.result().succeeded()) return false;
-    observed = result.load();
-    return observed == kExpectedProbeResult;
+    std::atomic<std::size_t> completion_count{0};
+    std::vector<cpu::CpuTaskHandle> handles{};
+    handles.reserve(job_count);
+    for (std::size_t index = 0; index < job_count; ++index) {
+        cpu::CpuTaskSubmissionResult submission = pool.submit(
+            [&result, &completion_count]() {
+                result.fetch_add(avx2_probe(), std::memory_order_relaxed);
+                completion_count.fetch_add(1, std::memory_order_relaxed);
+            });
+        if (!submission.accepted()) return false;
+        handles.push_back(std::move(submission.handle));
+    }
+    for (const cpu::CpuTaskHandle& handle : handles) {
+        if (!handle.wait_for(std::chrono::seconds{2}) ||
+            !handle.result().succeeded()) return false;
+    }
+    observed = result.load(std::memory_order_relaxed);
+    completed = completion_count.load(std::memory_order_relaxed);
+    return completed == job_count &&
+           observed == kExpectedProbeResult * job_count;
 }
 
 bool stop_pool(cpu::CpuThreadPool& pool) {
@@ -117,20 +144,21 @@ bool stop_pool(cpu::CpuThreadPool& pool) {
                cpu::CpuThreadPoolShutdownResult::fully_stopped;
 }
 
-int run_one_shot_probe() {
+int run_one_shot_probe(std::size_t worker_count) {
     constexpr char handshake[] =
         "NODE_CPU_RUNTIME_ABI node.cpu-runtime.conformance.v1\n";
     if (std::strcmp(node_cpu_runtime_conformance_v1(), kAbiIdentity) != 0 ||
         !write_all(handshake, sizeof(handshake) - 1U)) return 65;
 
     cpu::CpuThreadPoolOptions options{};
-    options.worker_count = 1;
-    options.queue_capacity = 1;
+    options.worker_count = worker_count;
+    options.queue_capacity = worker_count;
     options.execution_group_key = "p01.cpu-runtime.avx2";
     cpu::CpuThreadPool pool{options};
     if (pool.start().state != cpu::CpuThreadPoolState::running) return 66;
     std::uint64_t observed = 0;
-    if (!execute_probe(pool, observed)) {
+    std::size_t completed = 0;
+    if (!execute_probe(pool, worker_count, observed, completed)) {
         (void)stop_pool(pool);
         return 69;
     }
@@ -145,7 +173,7 @@ int run_one_shot_probe() {
     return 0;
 }
 
-int run_resident() {
+int run_resident(std::size_t worker_count) {
     sigset_t signals;
     (void)sigemptyset(&signals);
     (void)sigaddset(&signals, SIGTERM);
@@ -164,8 +192,8 @@ int run_resident() {
     (void)unlink(healthy_path.c_str());
 
     cpu::CpuThreadPoolOptions options{};
-    options.worker_count = 1;
-    options.queue_capacity = 1;
+    options.worker_count = worker_count;
+    options.queue_capacity = worker_count;
     options.execution_group_key = "node.cpu-runtime.resident.avx2";
     cpu::CpuThreadPool pool{options};
     if (pool.start().state != cpu::CpuThreadPoolState::running) return 75;
@@ -177,12 +205,20 @@ int run_resident() {
         (void)stop_pool(pool);
         return 76;
     }
-    constexpr char resident_event[] =
+    char resident_event[320]{};
+    const int resident_length = std::snprintf(
+        resident_event, sizeof(resident_event),
         "{\"record\":\"cpu_runtime_resident\","
         "\"subject\":\"node.cpu.runtime\",\"outcome\":\"active\","
         "\"abi\":\"node.cpu-runtime.conformance.v1\","
-        "\"profile\":\"avx2\",\"scope\":\"current_boot_lab\"}\n";
-    (void)write_all(resident_event, sizeof(resident_event) - 1U);
+        "\"profile\":\"avx2\",\"runtime_worker_count\":%zu,"
+        "\"queue_capacity\":%zu,\"scope\":\"current_boot_lab\"}\n",
+        worker_count, worker_count);
+    if (resident_length > 0 &&
+        static_cast<std::size_t>(resident_length) < sizeof(resident_event)) {
+        (void)write_all(resident_event,
+                        static_cast<std::size_t>(resident_length));
+    }
 
     bool probed = false;
     for (;;) {
@@ -191,16 +227,24 @@ int run_resident() {
         if (signal_number == SIGUSR1) {
             if (probed) continue;
             std::uint64_t observed = 0;
-            const bool passed = execute_probe(pool, observed);
-            char event[320]{};
+            std::size_t completed = 0;
+            const bool passed = execute_probe(
+                pool, worker_count, observed, completed);
+            char event[512]{};
             const int length = std::snprintf(
                 event, sizeof(event),
                 "{\"record\":\"runtime_post_transition_probe\","
                 "\"subject\":\"node.cpu.runtime\",\"outcome\":\"%s\","
-                "\"result\":%llu,\"expected_result\":120,"
-                "\"worker_count\":1,\"queue_capacity\":1}\n",
+                "\"result\":%llu,\"expected_result\":%llu,"
+                "\"runtime_worker_count\":%zu,\"queue_capacity\":%zu,"
+                "\"multi_worker_probe_jobs\":%zu,"
+                "\"multi_worker_probe_result\":\"%s\"}\n",
                 passed ? "passed" : "failed",
-                static_cast<unsigned long long>(observed));
+                static_cast<unsigned long long>(observed),
+                static_cast<unsigned long long>(
+                    kExpectedProbeResult * worker_count),
+                worker_count, worker_count, completed,
+                passed ? "passed" : "failed");
             if (length > 0 && static_cast<std::size_t>(length) < sizeof(event)) {
                 (void)write_all(event, static_cast<std::size_t>(length));
             }
@@ -234,12 +278,14 @@ extern "C" const char* node_cpu_runtime_conformance_v1() noexcept {
 }
 
 int main(int argument_count, char** arguments) {
-    if (argument_count != 2) return 64;
+    if (argument_count != 3) return 64;
+    std::size_t worker_count = 0;
+    if (!parse_worker_count(arguments[2], worker_count)) return 64;
     if (std::strcmp(arguments[1], "--serve-probe") == 0) {
-        return run_one_shot_probe();
+        return run_one_shot_probe(worker_count);
     }
     if (std::strcmp(arguments[1], "--resident") == 0) {
-        return run_resident();
+        return run_resident(worker_count);
     }
     return 64;
 }

@@ -36,6 +36,9 @@ PROFILE_KEYS = {
     "node_id",
     "firmware",
     "vcpus",
+    "cpu_sockets",
+    "cpu_cores",
+    "cpu_threads",
     "memory_mb",
     "debug_enabled",
     "gdb_port",
@@ -62,6 +65,7 @@ MAX_PROCESS_INSPECTIONS = 131072
 START_WAIT_SECONDS = 8.0
 STOP_WAIT_SECONDS = 5.0
 MAX_PEERS = 16
+MAX_VCPUS = 16
 
 
 class LabError(RuntimeError):
@@ -73,6 +77,9 @@ class NodeProfile:
     node_id: str
     firmware: str
     vcpus: int
+    cpu_sockets: int
+    cpu_cores: int
+    cpu_threads: int
     memory_mb: int
     debug_enabled: bool
     gdb_port: int
@@ -139,6 +146,29 @@ def require_int(value: Any, name: str, minimum: int, maximum: int) -> int:
     return value
 
 
+def validate_cpu_topology(
+    vcpus: Any, sockets: Any, cores: Any, threads: Any
+) -> tuple[int, int, int, int]:
+    total = require_int(vcpus, "vcpus", 1, MAX_VCPUS)
+    socket_count = require_int(sockets, "cpu_sockets", 1, MAX_VCPUS)
+    core_count = require_int(cores, "cpu_cores", 1, MAX_VCPUS)
+    thread_count = require_int(threads, "cpu_threads", 1, MAX_VCPUS)
+    if socket_count > MAX_VCPUS // core_count:
+        raise LabError("profile CPU topology product exceeds the bounded vCPU limit")
+    socket_cores = socket_count * core_count
+    if socket_cores > MAX_VCPUS // thread_count:
+        raise LabError("profile CPU topology product exceeds the bounded vCPU limit")
+    if socket_cores * thread_count != total:
+        raise LabError("profile vcpus must equal cpu_sockets * cpu_cores * cpu_threads")
+    return total, socket_count, core_count, thread_count
+
+
+def cpu_discovery_counts_consistent(
+    expected: int, configured: int, online: int, allowed: int
+) -> bool:
+    return expected == configured and 1 <= allowed <= online <= configured
+
+
 def load_profiles() -> dict[str, NodeProfile]:
     try:
         files = sorted(
@@ -202,10 +232,16 @@ def load_profiles() -> dict[str, NodeProfile]:
             or acs_peers != sorted(set(acs_peers))
         ):
             raise LabError(f"profile acs_peers must be a bounded sorted unique list: {path}")
+        vcpus, cpu_sockets, cpu_cores, cpu_threads = validate_cpu_topology(
+            raw["vcpus"], raw["cpu_sockets"], raw["cpu_cores"], raw["cpu_threads"]
+        )
         profile = NodeProfile(
             node_id=node_id,
             firmware=firmware,
-            vcpus=require_int(raw["vcpus"], "vcpus", 1, 16),
+            vcpus=vcpus,
+            cpu_sockets=cpu_sockets,
+            cpu_cores=cpu_cores,
+            cpu_threads=cpu_threads,
             memory_mb=require_int(raw["memory_mb"], "memory_mb", 128, 8192),
             debug_enabled=debug_enabled,
             gdb_port=require_int(raw["gdb_port"], "gdb_port", 1024, 65535),
@@ -648,6 +684,9 @@ def start_node(
             "NODE_QEMU_LOG_DIR",
             "NODE_QEMU_NODE_ID",
             "NODE_QEMU_VCPUS",
+            "NODE_QEMU_CPU_SOCKETS",
+            "NODE_QEMU_CPU_CORES",
+            "NODE_QEMU_CPU_THREADS",
             "NODE_QEMU_MEMORY_MB",
             "NODE_QEMU_TIMEOUT_SECONDS",
             "NODE_QEMU_MODE",
@@ -668,6 +707,9 @@ def start_node(
                 "NODE_QEMU_LOG_DIR": str(paths.log_dir),
                 "NODE_QEMU_NODE_ID": profile.node_id,
                 "NODE_QEMU_VCPUS": str(profile.vcpus),
+                "NODE_QEMU_CPU_SOCKETS": str(profile.cpu_sockets),
+                "NODE_QEMU_CPU_CORES": str(profile.cpu_cores),
+                "NODE_QEMU_CPU_THREADS": str(profile.cpu_threads),
                 "NODE_QEMU_MEMORY_MB": str(profile.memory_mb),
                 "NODE_QEMU_TIMEOUT_SECONDS": (
                     "0" if mode == "lab" else ("600" if debug else "90")
@@ -716,6 +758,9 @@ def start_node(
             "qemu_start_ticks": None,
             "firmware": profile.firmware,
             "vcpus": profile.vcpus,
+            "cpu_sockets": profile.cpu_sockets,
+            "cpu_cores": profile.cpu_cores,
+            "cpu_threads": profile.cpu_threads,
             "memory_mb": profile.memory_mb,
             "mode": mode,
             "network_backend": "loopback_multicast_dgram_lan",
@@ -790,6 +835,10 @@ def start_node(
             "qemu_pid": qemu.pid,
             "firmware": profile.firmware,
             "mode": mode,
+            "vcpus": profile.vcpus,
+            "cpu_sockets": profile.cpu_sockets,
+            "cpu_cores": profile.cpu_cores,
+            "cpu_threads": profile.cpu_threads,
             "debug_enabled": debug,
             "network_attachment": network_attachment(profile, qemu),
             "acs_peers": list(profile.acs_peers),
@@ -807,7 +856,8 @@ def start_node(
 def print_start_result(result: dict[str, Any]) -> None:
     print(f"started: {result['node_id']}")
     for key in (
-        "qemu_pid", "firmware", "mode", "debug_enabled", "network_attachment",
+        "qemu_pid", "firmware", "mode", "vcpus", "cpu_sockets", "cpu_cores",
+        "cpu_threads", "debug_enabled", "network_attachment",
         "acs_peers", "mac_address", "acs_reference_address",
         "acs_reference_udp_port", "serial_log", "event_log"
     ):
@@ -998,6 +1048,9 @@ def print_status(profile: NodeProfile) -> None:
         print(f"mode: {str((state or {}).get('mode', 'unknown'))[:32]}")
         print(f"firmware: {profile.firmware}")
         print(f"vcpus: {profile.vcpus}")
+        print(f"cpu_sockets: {profile.cpu_sockets}")
+        print(f"cpu_cores: {profile.cpu_cores}")
+        print(f"cpu_threads: {profile.cpu_threads}")
         print(f"memory_mb: {profile.memory_mb}")
         print(f"iso_path: {ISO_PATH}")
         print(f"iso_sha256: {iso_sha}")
@@ -1174,10 +1227,19 @@ def cpu_evidence_summary(profile: NodeProfile) -> dict[str, str]:
         "gpu_runtime": None,
         "result": None,
     }
+    runtime_resident: dict[str, Any] | None = None
+    runtime_probe: dict[str, Any] | None = None
     for event in events:
+        record = event.get("record")
+        if (record == "cpu_runtime_resident" and
+                event.get("subject") == "node.cpu.runtime" and
+                event.get("outcome") == "active"):
+            runtime_resident = event
+        elif (record == "runtime_post_transition_probe" and
+              event.get("subject") == "node.cpu.runtime"):
+            runtime_probe = event
         if event.get("subject") != profile.node_id:
             continue
-        record = event.get("record")
         if record == "cpu_topology_observed":
             selected["topology"] = event
         elif record == "cpu_capability_observed":
@@ -1204,12 +1266,37 @@ def cpu_evidence_summary(profile: NodeProfile) -> dict[str, str]:
             return str(value)[:128]
         return "unknown"
 
+    def runtime_field(key: str) -> str:
+        for event in (runtime_probe, runtime_resident):
+            if event is not None and key in event:
+                value = event[key]
+                if isinstance(value, bool):
+                    return str(value).lower()
+                if isinstance(value, (str, int)):
+                    return str(value)[:128]
+        return "not_observed"
+
+    configured = field("topology", "configured")
+    online = field("topology", "online")
+    allowed = field("topology", "process_allowed")
+    try:
+        count_consistency = str(cpu_discovery_counts_consistent(
+            profile.vcpus, int(configured), int(online), int(allowed)
+        )).lower()
+    except ValueError:
+        count_consistency = "unknown"
+
     return {
         "node_id": profile.node_id,
+        "profile_sockets": str(profile.cpu_sockets),
+        "profile_cores": str(profile.cpu_cores),
+        "profile_threads": str(profile.cpu_threads),
+        "profile_vcpus": str(profile.vcpus),
         "topology_observation": field("topology", "outcome"),
-        "configured_logical_processors": field("topology", "configured"),
-        "online_logical_processors": field("topology", "online"),
-        "process_allowed_logical_processors": field("topology", "process_allowed"),
+        "configured_logical_processors": configured,
+        "online_logical_processors": online,
+        "process_allowed_logical_processors": allowed,
+        "discovery_counts_consistent": count_consistency,
         "packages": field("topology", "packages"),
         "physical_cores": field("topology", "physical_cores"),
         "numa_nodes": field("topology", "numa_nodes"),
@@ -1227,6 +1314,9 @@ def cpu_evidence_summary(profile: NodeProfile) -> dict[str, str]:
         "assembly_requirement_result": field("result", "outcome"),
         "runtime_compiled": field("result", "runtime_compiled"),
         "runtime_activated": field("result", "runtime_activated"),
+        "runtime_worker_count": runtime_field("runtime_worker_count"),
+        "multi_worker_probe_jobs": runtime_field("multi_worker_probe_jobs"),
+        "multi_worker_probe_result": runtime_field("multi_worker_probe_result"),
         "evidence_log": str(paths.event_log),
     }
 
@@ -1239,21 +1329,22 @@ def print_cpu_info(profile: NodeProfile) -> None:
 
 def print_cpu_summary() -> None:
     profiles = load_profiles()
-    print("NODE ID\tCPU\tPROFILE\tCPU RUNTIME\tGPU RUNTIME\tEVALUATION")
+    print("NODE ID\tPKG\tCORES\tLOGICAL\tSMT\tALLOWED\tWORKERS\tPROFILE\tPROBE")
     incomplete = False
     for node_id in sorted(profiles):
         profile = profiles[node_id]
         try:
             summary = cpu_evidence_summary(profile)
             print(
-                f"{node_id}\t{summary['architecture']}\t"
-                f"{summary['selected_profile']}\t{summary['cpu_runtime']}\t"
-                f"{summary['gpu_runtime']}\t"
-                f"{summary['assembly_requirement_result']}"
+                f"{node_id}\t{summary['packages']}\t{summary['physical_cores']}\t"
+                f"{summary['configured_logical_processors']}\t{summary['smt']}\t"
+                f"{summary['process_allowed_logical_processors']}\t"
+                f"{summary['runtime_worker_count']}\t{summary['selected_profile']}\t"
+                f"{summary['multi_worker_probe_result']}"
             )
         except LabError as error:
             incomplete = True
-            print(f"{node_id}\tnot_observed\t-\t-\t-\t{error}")
+            print(f"{node_id}\tnot_observed\t-\t-\t-\t-\t-\t-\t{error}")
     if incomplete:
         raise LabError("one or more managed nodes lack complete CPU evidence")
 

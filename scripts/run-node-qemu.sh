@@ -17,6 +17,9 @@ DEBUG_MODE=${NODE_QEMU_DEBUG_MODE:-0}
 GDB_PORT=${NODE_QEMU_GDB_PORT:-1234}
 NODE_ID=${NODE_QEMU_NODE_ID:-}
 VCPUS=${NODE_QEMU_VCPUS:-1}
+CPU_SOCKETS=${NODE_QEMU_CPU_SOCKETS:-1}
+CPU_CORES=${NODE_QEMU_CPU_CORES:-${VCPUS}}
+CPU_THREADS=${NODE_QEMU_CPU_THREADS:-1}
 MEMORY_MB=${NODE_QEMU_MEMORY_MB:-512}
 NETWORK_ENABLED=${NODE_QEMU_NETWORK_ENABLED:-0}
 NETWORK_MAC=${NODE_QEMU_NETWORK_MAC:-}
@@ -94,6 +97,12 @@ fi
     fail 'NODE_QEMU_DEBUG_MODE must be 0 or 1'
 [[ ${VCPUS} =~ ^[1-9][0-9]?$ ]] && (( VCPUS <= 16 )) ||
     fail 'NODE_QEMU_VCPUS must be an integer from 1 through 16'
+for topology_value in "${CPU_SOCKETS}" "${CPU_CORES}" "${CPU_THREADS}"; do
+    [[ ${topology_value} =~ ^[1-9][0-9]?$ ]] && (( topology_value <= 16 )) ||
+        fail 'QEMU CPU topology fields must be integers from 1 through 16'
+done
+(( CPU_SOCKETS * CPU_CORES * CPU_THREADS == VCPUS )) ||
+    fail 'NODE_QEMU_VCPUS must equal sockets * cores * threads'
 [[ ${MEMORY_MB} =~ ^[1-9][0-9]{2,4}$ ]] &&
     (( MEMORY_MB >= 128 && MEMORY_MB <= 8192 )) ||
     fail 'NODE_QEMU_MEMORY_MB must be an integer from 128 through 8192'
@@ -158,7 +167,7 @@ qemu_command=(
     -no-user-config
     -machine accel=tcg
     -cpu max
-    -smp "${VCPUS}"
+    -smp "cpus=${VCPUS},sockets=${CPU_SOCKETS},cores=${CPU_CORES},threads=${CPU_THREADS}"
     -m "${MEMORY_MB}M"
     -cdrom "${ISO_PATH}"
     -boot order=d
@@ -244,6 +253,8 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'firmware: %s\n' "${FIRMWARE}"
     printf 'iso: %s\n' "${ISO_PATH}"
     printf 'vcpus: %s\n' "${VCPUS}"
+    printf 'cpu_topology: sockets=%s cores=%s threads=%s\n' \
+        "${CPU_SOCKETS}" "${CPU_CORES}" "${CPU_THREADS}"
     printf 'memory_mb: %s\n' "${MEMORY_MB}"
     printf 'node_mode: %s\n' "${NODE_MODE}"
     if [[ -n ${NODE_ID} ]]; then

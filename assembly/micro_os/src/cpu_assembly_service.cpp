@@ -46,7 +46,8 @@ void emit(const char* format, Arguments... arguments) noexcept {
 }
 
 bool persist_decision(const std::string& node,
-                      const boot::CpuAssemblyDecision& decision) noexcept {
+                      const boot::CpuAssemblyDecision& decision,
+                      std::size_t allowed_logical_processors) noexcept {
     std::string path{};
     const char* host_root = std::getenv("NODE_P01_HOST_ROOT");
     if (host_root != nullptr && host_root[0] != '\0') {
@@ -71,12 +72,13 @@ bool persist_decision(const std::string& node,
         "cpu_runtime=%s\n"
         "gpu_runtime=%s\n"
         "architecture=%s\n"
-        "profile=%s\n",
+        "profile=%s\n"
+        "allowed_logical_processors=%zu\n",
         node.c_str(), boot::to_string(decision.evaluation),
         boot::to_string(decision.cpu_runtime),
         boot::to_string(decision.gpu_runtime),
         cpu::to_string(decision.selected_architecture),
-        cpu::to_string(decision.selected_simd));
+        cpu::to_string(decision.selected_simd), allowed_logical_processors);
     const bool valid_length =
         length > 0 && static_cast<std::size_t>(length) < record.size();
     const bool written = valid_length &&
@@ -254,7 +256,8 @@ int run() {
          "\"detail\":\"boot_owned_requirement_plan_only\"}\n",
          node.c_str(), boot::to_string(decision.evaluation));
     if (!decision.compatible()) return 30;
-    if (!persist_decision(node, decision)) {
+    if (!persist_decision(node, decision,
+                          summary.process_allowed_logical_processor_count)) {
         emit("{\"record\":\"assembly_decision_export\",\"subject\":\"%s\","
              "\"outcome\":\"unavailable\","
              "\"detail\":\"bounded_volatile_decision_export_failed\"}\n",

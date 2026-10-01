@@ -193,7 +193,7 @@ frontend reaps only its GDB processes and never stops the managed VMs.
 
 The five managed development instances are declared under
 `config/virtual_nodes/`. A bounded Python standard-library controller discovers
-the profiles and wraps the same
+the profiles, validates their explicit socket/core/thread topology, and wraps the same
 launchers without replacing their boot contract:
 
 ```sh
@@ -225,6 +225,10 @@ Generated PID/state records and per-node serial/event logs live only beneath
 `build/virtual/NODE/`. Before stopping an instance, the controller verifies
 the recorded PID, Linux process-start identity, managed QEMU marker, canonical
 ISO argument, and exact private-network arguments. The five managed guests have
+one, two, or four profile-driven vCPUs spanning single-core, multi-core, SMT,
+and multi-socket cases. QEMU receives the explicit topology, while `cpu-info`
+and `cpu-summary` report fresh guest observations plus the bounded resident CPU
+worker count and deterministic per-worker probe result. The five guests also have
 deterministic locally administered MAC and IPv4 addresses on one QEMU datagram
 multicast Ethernet segment confined to host loopback. It has no NAT, host bridge, TAP,
 internet access, or host-LAN listener. Managed guests use only the fixed

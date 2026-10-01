@@ -30,11 +30,14 @@ p01_require_command make
 p01_require_command sha256sum
 mkdir -p -- "${kernel_build}" "${artifact_dir}"
 make -C "${kernel_source}" O="${kernel_build}" ARCH=x86_64 x86_64_defconfig
-"${kernel_source}/scripts/kconfig/merge_config.sh" -m -O "${kernel_build}" \
-    "${kernel_build}/.config" \
-    "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/common.config" \
-    "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/x86_64.config" \
-    "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/dell_wyse_5070.config"
+(
+    cd -- "${kernel_build}"
+    "${kernel_source}/scripts/kconfig/merge_config.sh" -m -O "${kernel_build}" \
+        "${kernel_build}/.config" \
+        "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/common.config" \
+        "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/x86_64.config" \
+        "${NODE_REPOSITORY}/assembly/ram_assembly_p0/config/dell_wyse_5070.config"
+)
 make -C "${kernel_source}" O="${kernel_build}" ARCH=x86_64 olddefconfig
 make -C "${kernel_source}" O="${kernel_build}" ARCH=x86_64 -j1 bzImage
 install -m 0644 "${kernel_build}/arch/x86/boot/bzImage" \

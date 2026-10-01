@@ -1,7 +1,10 @@
 {
   "node_id": "node-002",
   "firmware": "bios",
-  "vcpus": 1,
+  "vcpus": 2,
+  "cpu_sockets": 1,
+  "cpu_cores": 2,
+  "cpu_threads": 1,
   "memory_mb": 512,
   "debug_enabled": false,
   "gdb_port": 1235,

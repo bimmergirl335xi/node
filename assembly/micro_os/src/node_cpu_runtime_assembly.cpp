@@ -15,6 +15,21 @@
 #include <vector>
 
 namespace node::boot {
+
+std::size_t select_cpu_runtime_worker_count(
+    std::size_t allowed_logical_processors) noexcept {
+    if (allowed_logical_processors == 0 ||
+        allowed_logical_processors > kCpuRuntimeMaximumWorkers) return 0;
+    return allowed_logical_processors;
+}
+
+bool valid_cpu_runtime_worker_count(
+    std::size_t allowed_logical_processors,
+    std::size_t worker_count) noexcept {
+    return worker_count != 0 && worker_count <= allowed_logical_processors &&
+           worker_count <= kCpuRuntimeMaximumWorkers;
+}
+
 namespace {
 
 constexpr std::size_t kMaximumIdentityBytes = 128;

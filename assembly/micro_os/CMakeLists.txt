@@ -279,7 +279,17 @@ if(PROMETHEUS_BUILD_TESTS)
     )
     add_test(
         NAME p01_cpu_runtime_candidate_probe
-        COMMAND "$<TARGET_FILE:node_p01_cpu_runtime_candidate>" --serve-probe
+        COMMAND "$<TARGET_FILE:node_p01_cpu_runtime_candidate>" --serve-probe 1
+    )
+    add_test(
+        NAME p01_cpu_runtime_candidate_multi_worker_probe
+        COMMAND "$<TARGET_FILE:node_p01_cpu_runtime_candidate>" --serve-probe 4
+    )
+    set_tests_properties(
+        p01_cpu_runtime_candidate_multi_worker_probe
+        PROPERTIES
+            PASS_REGULAR_EXPRESSION "NODE_CPU_RUNTIME_PROBE 480"
+            TIMEOUT 3
     )
     set_tests_properties(
         p01_cpu_runtime_candidate_probe

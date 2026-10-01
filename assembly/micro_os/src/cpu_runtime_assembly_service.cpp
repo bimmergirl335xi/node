@@ -45,6 +45,7 @@ struct DecisionRecord {
     std::string gpu_requirement{};
     std::string architecture{};
     std::string profile{};
+    std::size_t allowed_logical_processors = 0;
 };
 
 bool write_all(int descriptor, const char* data, std::size_t size) noexcept {
@@ -119,7 +120,7 @@ bool read_bounded_file(const std::string& path,
 bool parse_decision(std::string_view encoded, DecisionRecord& output) {
     if (encoded.empty() || encoded.size() > kDecisionMaximumBytes ||
         encoded.back() != '\n') return false;
-    std::array<bool, 8> seen{};
+    std::array<bool, 9> seen{};
     DecisionRecord parsed{};
     std::size_t offset = 0;
     while (offset < encoded.size()) {
@@ -158,10 +159,20 @@ bool parse_decision(std::string_view encoded, DecisionRecord& output) {
         } else if (key == "profile") {
             index = 7;
             parsed.profile = value;
+        } else if (key == "allowed_logical_processors") {
+            index = 8;
+            const auto result = std::from_chars(
+                value.data(), value.data() + value.size(),
+                parsed.allowed_logical_processors);
+            if (result.ec != std::errc{} ||
+                result.ptr != value.data() + value.size() ||
+                boot::select_cpu_runtime_worker_count(
+                    parsed.allowed_logical_processors) == 0) return false;
         } else {
             return false;
         }
-        if (seen[index] || !boot::bounded_identity(value)) return false;
+        if (seen[index] ||
+            (index != 8 && !boot::bounded_identity(value))) return false;
         seen[index] = true;
         offset = end + 1;
     }
@@ -242,6 +253,7 @@ bool materialize_candidate(const std::string& source,
 }
 
 boot::CpuRuntimeProcessEvidence run_probe(const std::string& executable,
+                                         std::size_t worker_count,
                                          std::string& captured) {
     boot::CpuRuntimeProcessEvidence evidence{};
     int output_pipe[2]{};
@@ -256,9 +268,18 @@ boot::CpuRuntimeProcessEvidence run_probe(const std::string& executable,
         (void)close(output_pipe[0]);
         if (dup2(output_pipe[1], STDOUT_FILENO) < 0) _exit(126);
         (void)close(output_pipe[1]);
+        std::array<char, 32> worker_count_text{};
+        const int worker_length = std::snprintf(
+            worker_count_text.data(), worker_count_text.size(), "%zu",
+            worker_count);
+        if (worker_length <= 0 ||
+            static_cast<std::size_t>(worker_length) >= worker_count_text.size()) {
+            _exit(126);
+        }
         char* const arguments[] = {
             const_cast<char*>(executable.c_str()),
             const_cast<char*>("--serve-probe"),
+            worker_count_text.data(),
             nullptr,
         };
         char* const environment[] = {
@@ -350,7 +371,7 @@ void emit_phase_result(const std::string& node,
          probe_passed ? "passed" : "not_passed");
 }
 
-int run() {
+int run(std::size_t& resident_worker_count) {
     std::string root{};
     if (!root_prefix(root)) {
         emit_phase_result("unmanaged-node", "failed", false, false, false,
@@ -366,6 +387,15 @@ int run() {
                           false, "required_component_missing");
         return 40;
     }
+    const std::size_t worker_count = boot::select_cpu_runtime_worker_count(
+        decision.allowed_logical_processors);
+    if (!boot::valid_cpu_runtime_worker_count(
+            decision.allowed_logical_processors, worker_count)) {
+        emit_phase_result(decision.node_identity, "failed", false, false, false,
+                          false, "invalid_worker_count");
+        return 40;
+    }
+    resident_worker_count = worker_count;
 
     std::string encoded_provenance{};
     boot::CpuRuntimeProvenance provenance{};
@@ -494,9 +524,11 @@ int run() {
          decision.node_identity.c_str());
     std::string process_output{};
     const boot::CpuRuntimeProcessEvidence process =
-        run_probe(rooted(root, kActivePath), process_output);
+        run_probe(rooted(root, kActivePath), worker_count, process_output);
+    const std::uint64_t expected_probe_result =
+        kExpectedProbeResult * static_cast<std::uint64_t>(worker_count);
     const boot::CpuRuntimeProcessCode process_code =
-        boot::evaluate_cpu_runtime_process(process, kExpectedProbeResult);
+        boot::evaluate_cpu_runtime_process(process, expected_probe_result);
     emit("{\"record\":\"cpu_runtime_activation_result\","
          "\"subject\":\"%s\",\"outcome\":\"%s\","
          "\"runtime_activated\":%s,\"interface_observed\":%s,"
@@ -509,10 +541,11 @@ int run() {
         emit("{\"record\":\"cpu_runtime_probe_started\",\"subject\":\"%s\","
              "\"outcome\":\"started\",\"workload\":"
              "\"avx2_int32_vector_multiply_sum\","
-             "\"expected_result\":%llu,\"worker_count\":1,"
-             "\"queue_capacity\":1}\n",
+             "\"expected_result\":%llu,\"worker_count\":%zu,"
+             "\"queue_capacity\":%zu,\"multi_worker_probe_jobs\":%zu}\n",
              decision.node_identity.c_str(),
-             static_cast<unsigned long long>(kExpectedProbeResult));
+             static_cast<unsigned long long>(expected_probe_result),
+             worker_count, worker_count, worker_count);
     }
     emit("{\"record\":\"cpu_runtime_probe_result\",\"subject\":\"%s\","
          "\"outcome\":\"%s\",\"result\":%llu,"
@@ -539,13 +572,22 @@ int main() {
         "/dev/ttyS0", O_WRONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (serial >= 0) event_output_fd = serial;
     try {
-        const int result = run();
+        std::size_t resident_worker_count = 0;
+        const int result = run(resident_worker_count);
         const char* mode = std::getenv("NODE_MICRO_OS_MODE");
         if (result == 0 && mode != nullptr && std::strcmp(mode, "lab") == 0) {
             std::string root{};
             if (!root_prefix(root)) return 47;
             const std::string executable = rooted(root, kActivePath);
+            std::array<char, 32> worker_count_text{};
+            const int worker_length = std::snprintf(
+                worker_count_text.data(), worker_count_text.size(), "%zu",
+                resident_worker_count);
+            if (worker_length <= 0 ||
+                static_cast<std::size_t>(worker_length) >=
+                    worker_count_text.size()) return 47;
             execl(executable.c_str(), executable.c_str(), "--resident",
+                  worker_count_text.data(),
                   static_cast<char*>(nullptr));
             emit("{\"record\":\"cpu_runtime_resident\","
                  "\"subject\":\"node.cpu.runtime\","

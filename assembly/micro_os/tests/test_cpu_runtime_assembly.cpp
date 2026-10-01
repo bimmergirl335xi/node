@@ -91,6 +91,19 @@ int main(int argument_count, char** arguments) {
     const std::string candidate_path = arguments[1];
     const std::vector<std::uint8_t> candidate = read_file(candidate_path);
     require(!candidate.empty(), "candidate artifact must be readable");
+    require(boot::select_cpu_runtime_worker_count(1) == 1,
+            "one allowed CPU must preserve the single-worker path");
+    require(boot::select_cpu_runtime_worker_count(4) == 4,
+            "four allowed CPUs must select four workers");
+    require(boot::select_cpu_runtime_worker_count(0) == 0,
+            "zero allowed CPUs must fail closed");
+    require(boot::select_cpu_runtime_worker_count(
+                boot::kCpuRuntimeMaximumWorkers + 1U) == 0,
+            "unbounded allowed CPU counts must fail closed");
+    require(boot::valid_cpu_runtime_worker_count(4, 4),
+            "worker count may match allowed CPU count");
+    require(!boot::valid_cpu_runtime_worker_count(2, 3),
+            "worker count must not exceed allowed CPU count");
     require(boot::sha256_hex(
                 reinterpret_cast<const std::uint8_t*>("abc"), 3) ==
                 "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",

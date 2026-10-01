@@ -104,7 +104,7 @@ Historical handoffs are evidence, not current authority.
 - shell helpers: `scripts/`
 - Python utilities, the bounded managed-VM/runtime controller, and the
   profile-driven GDB/MI fleet frontend: `python/`
-- managed development-instance and private-link profiles:
+- managed development-instance CPU-topology and private-link profiles:
   `config/virtual_nodes/`
 - simulation code: `simulator/`
 - test fixtures and failure scenarios: `tests/fixtures/`, `tests/failure/`
