@@ -148,6 +148,7 @@ expected_result=exit_zero
 dependencies=cpu_assembly_decision
 restart_policy=none
 maximum_restart_count=0
+resident_capable=true
 arguments=
 environment=LANG=C,LC_ALL=C
 service_end
@@ -163,6 +164,7 @@ expected_result=exit_zero
 dependencies=cpu_runtime_assembly
 restart_policy=none
 maximum_restart_count=0
+resident_capable=true
 arguments=
 environment=LANG=C,LC_ALL=C
 service_end

@@ -12,6 +12,7 @@ EVENT_LOG_PATH="${LOG_DIR}/qemu-boot-events.jsonl"
 TEMP_DIR="${BUILD_ROOT}/temp"
 QEMU_BIN=${NODE_QEMU_BIN:-qemu-system-x86_64}
 TIMEOUT_SECONDS=${NODE_QEMU_TIMEOUT_SECONDS:-90}
+NODE_MODE=${NODE_QEMU_MODE:-conformance}
 DEBUG_MODE=${NODE_QEMU_DEBUG_MODE:-0}
 GDB_PORT=${NODE_QEMU_GDB_PORT:-1234}
 NODE_ID=${NODE_QEMU_NODE_ID:-}
@@ -45,6 +46,8 @@ BIOS is the default. UEFI requires a matching OVMF code and variable template.
 Environment:
   NODE_QEMU_BIN              QEMU executable (default: qemu-system-x86_64)
   NODE_QEMU_TIMEOUT_SECONDS  bounded run timeout from 1 through 600 (default: 90)
+                              or 0 for explicit managed lab residency
+  NODE_QEMU_MODE             conformance or lab (default: conformance)
   NODE_QEMU_OVMF_CODE        optional OVMF code image override for --uefi
   NODE_QEMU_OVMF_VARS        optional OVMF variable template override for --uefi
 
@@ -78,9 +81,15 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[[ ${TIMEOUT_SECONDS} =~ ^[1-9][0-9]{0,2}$ ]] &&
-    (( TIMEOUT_SECONDS <= 600 )) ||
-    fail 'NODE_QEMU_TIMEOUT_SECONDS must be an integer from 1 through 600'
+[[ ${NODE_MODE} == conformance || ${NODE_MODE} == lab ]] ||
+    fail 'NODE_QEMU_MODE must be conformance or lab'
+if [[ ${NODE_MODE} == lab && ${TIMEOUT_SECONDS} == 0 ]]; then
+    :
+else
+    [[ ${TIMEOUT_SECONDS} =~ ^[1-9][0-9]{0,2}$ ]] &&
+        (( TIMEOUT_SECONDS <= 600 )) ||
+        fail 'NODE_QEMU_TIMEOUT_SECONDS must be 1 through 600, or 0 in lab mode'
+fi
 [[ ${DEBUG_MODE} == 0 || ${DEBUG_MODE} == 1 ]] ||
     fail 'NODE_QEMU_DEBUG_MODE must be 0 or 1'
 [[ ${VCPUS} =~ ^[1-9][0-9]?$ ]] && (( VCPUS <= 16 )) ||
@@ -118,6 +127,9 @@ if [[ ${NETWORK_ENABLED} == 1 ]]; then
         [[ ${peer_part} =~ ^[a-z0-9-]+@10\.77\.0\.[0-9]+(\;[a-z0-9-]+@10\.77\.0\.[0-9]+)*$ ]] ||
             fail 'managed ACS peer profile parts must contain node@IPv4 entries'
     done
+fi
+if [[ ${NODE_MODE} == lab && ( -z ${NODE_ID} || ${NETWORK_ENABLED} != 1 ) ]]; then
+    fail 'lab mode requires an explicit managed node identity and network profile'
 fi
 if [[ ${DEBUG_MODE} == 1 ]]; then
     [[ ${GDB_PORT} =~ ^[0-9]{4,5}$ ]] &&
@@ -173,7 +185,8 @@ else
 fi
 
 if [[ -n ${NODE_ID} ]]; then
-    smbios_profile="type=1,manufacturer=${ACS_PEERS_A},product=Node-Development-VM"
+    smbios_profile="type=1,manufacturer=${ACS_PEERS_A}"
+    smbios_profile+=",product=Node-Development-VM-${NODE_MODE}"
     smbios_profile+=",version=acs-profile-v1-port-${ACS_UDP_PORT}"
     smbios_profile+=",serial=${NODE_ID},sku=${ACS_IPV4_ADDRESS}"
     smbios_profile+=",family=${ACS_PEERS_B}"
@@ -232,6 +245,7 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     printf 'iso: %s\n' "${ISO_PATH}"
     printf 'vcpus: %s\n' "${VCPUS}"
     printf 'memory_mb: %s\n' "${MEMORY_MB}"
+    printf 'node_mode: %s\n' "${NODE_MODE}"
     if [[ -n ${NODE_ID} ]]; then
         printf 'managed_node_id: %s\n' "${NODE_ID}"
     fi
@@ -258,9 +272,14 @@ started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 } > "${LOG_PATH}"
 
 set +e
-timeout --signal=TERM --kill-after=5s "${TIMEOUT_SECONDS}s" \
+if [[ ${TIMEOUT_SECONDS} == 0 ]]; then
     "${qemu_command[@]}" 2>&1 | tee -a "${LOG_PATH}"
-qemu_status=${PIPESTATUS[0]}
+    qemu_status=${PIPESTATUS[0]}
+else
+    timeout --signal=TERM --kill-after=5s "${TIMEOUT_SECONDS}s" \
+        "${qemu_command[@]}" 2>&1 | tee -a "${LOG_PATH}"
+    qemu_status=${PIPESTATUS[0]}
+fi
 set -e
 
 finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')

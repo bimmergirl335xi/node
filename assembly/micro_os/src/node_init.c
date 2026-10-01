@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "node_p01_manifest.h"
+#include "node_runtime_transition.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +31,8 @@
 #define NODE_P01_TERMINATION_GRACE_MS UINT64_C(250)
 #define NODE_P01_HOLD_MAX_SECONDS UINT32_C(600)
 #define NODE_P01_FD_CLOSE_LIMIT 256
+#define NODE_RUNTIME_READY_MARKER_BYTES ((size_t)256)
+#define NODE_RUNTIME_POST_PROBE_TIMEOUT_MS UINT64_C(3000)
 
 enum process_outcome {
     PROCESS_NOT_LAUNCHED = 0,
@@ -48,10 +51,17 @@ enum terminal_action {
     TERMINAL_HOLD
 };
 
+enum node_operating_mode {
+    NODE_MODE_CONFORMANCE = 0,
+    NODE_MODE_LAB = 1
+};
+
 struct boot_options {
     uint32_t hold_seconds;
     enum terminal_action action;
     uint32_t log_verbosity;
+    enum node_operating_mode mode;
+    int mode_explicit;
     char manifest_path[NODE_P01_MAX_PATH_BYTES];
     char expected_boot_identity[NODE_P01_MAX_IDENTITY_BYTES];
 };
@@ -66,6 +76,7 @@ struct service_runtime {
     int semantic_success;
     int termination_requested;
     int force_requested;
+    int resident_ready;
     int wait_status;
     enum process_outcome outcome;
 };
@@ -77,6 +88,8 @@ struct supervisor {
     int host_mode;
     int shutdown_requested;
     int concurrent_overlap_observed;
+    enum node_operating_mode mode;
+    int resident_phase;
     char host_root[NODE_P01_MAX_PATH_BYTES];
 };
 
@@ -172,6 +185,8 @@ static int parse_command_line(const char *input,
     options->hold_seconds = 1U;
     options->action = TERMINAL_POWER_OFF;
     options->log_verbosity = 1U;
+    options->mode = NODE_MODE_CONFORMANCE;
+    options->mode_explicit = 0;
     (void)snprintf(options->manifest_path, sizeof(options->manifest_path), "%s",
                    NODE_P01_MANIFEST_PATH);
     (void)snprintf(options->expected_boot_identity,
@@ -221,6 +236,18 @@ static int parse_command_line(const char *input,
                 (void)snprintf(detail, detail_capacity, "invalid log_verbosity");
                 return 0;
             }
+        } else if (strncmp(token, "node.micro_os.mode=",
+                           sizeof("node.micro_os.mode=") - 1U) == 0) {
+            value = token + sizeof("node.micro_os.mode=") - 1U;
+            if (strcmp(value, "conformance") == 0) {
+                options->mode = NODE_MODE_CONFORMANCE;
+            } else if (strcmp(value, "lab") == 0) {
+                options->mode = NODE_MODE_LAB;
+            } else {
+                (void)snprintf(detail, detail_capacity, "invalid mode");
+                return 0;
+            }
+            options->mode_explicit = 1;
         } else if (strncmp(token, "node.micro_os.manifest=",
                            sizeof("node.micro_os.manifest=") - 1U) == 0) {
             value = token + sizeof("node.micro_os.manifest=") - 1U;
@@ -260,6 +287,28 @@ static int read_command_line(char *output, size_t capacity) {
     }
     output[count] = '\0';
     return 1;
+}
+
+static void apply_platform_mode(struct boot_options *options) {
+    const char path[] = "/sys/class/dmi/id/product_name";
+    char value[96];
+    int descriptor;
+    ssize_t count;
+    if (options->mode_explicit) return;
+    descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return;
+    count = read(descriptor, value, sizeof(value) - 1U);
+    (void)close(descriptor);
+    if (count <= 0 || (size_t)count >= sizeof(value) - 1U) return;
+    while (count > 0 && (value[count - 1] == '\n' || value[count - 1] == '\r')) {
+        --count;
+    }
+    value[count] = '\0';
+    if (strcmp(value, "Node-Development-VM-lab") == 0) {
+        options->mode = NODE_MODE_LAB;
+    } else if (strcmp(value, "Node-Development-VM-conformance") == 0) {
+        options->mode = NODE_MODE_CONFORMANCE;
+    }
 }
 
 static int ensure_directory(const char *path, mode_t mode) {
@@ -526,7 +575,7 @@ static int launch_service(struct supervisor *supervisor, size_t index) {
     }
     if (pid == 0) {
         char *arguments[NODE_P01_MAX_ARGUMENTS + 2];
-        char *environment[NODE_P01_MAX_ENVIRONMENT + 2];
+        char *environment[NODE_P01_MAX_ENVIRONMENT + 3];
         size_t argument_index;
         size_t environment_index;
         sigset_t empty;
@@ -555,6 +604,10 @@ static int launch_service(struct supervisor *supervisor, size_t index) {
                            "NODE_P01_HOST_ROOT=%s", supervisor->host_root);
             environment[environment_index++] = host_root_environment;
         }
+        environment[environment_index++] =
+            supervisor->mode == NODE_MODE_LAB
+                ? (char *)"NODE_MICRO_OS_MODE=lab"
+                : (char *)"NODE_MICRO_OS_MODE=conformance";
         environment[environment_index] = NULL;
         for (descriptor = 3; descriptor < NODE_P01_FD_CLOSE_LIMIT; ++descriptor) {
             if (descriptor != exec_status[1]) {
@@ -590,6 +643,71 @@ static int launch_service(struct supervisor *supervisor, size_t index) {
     return 1;
 }
 
+static int resident_marker_matches(const struct supervisor *supervisor,
+                                   const char *service_identity,
+                                   const char *suffix,
+                                   const char *final_field) {
+    char path[2 * NODE_P01_MAX_PATH_BYTES];
+    char expected[NODE_RUNTIME_READY_MARKER_BYTES];
+    char actual[NODE_RUNTIME_READY_MARKER_BYTES];
+    struct stat status;
+    int descriptor;
+    int path_length;
+    int expected_length;
+    ssize_t count;
+    const char *root = supervisor->host_mode ? supervisor->host_root : "";
+    path_length = snprintf(
+        path, sizeof(path), "%s/run/node-p01-results/%s.%s",
+        root, service_identity, suffix);
+    expected_length = snprintf(
+        expected, sizeof(expected),
+        "schema=node.resident-service-%s.v1\nservice=%s\n%s\n",
+        strcmp(suffix, "ready") == 0 ? "ready" : "health",
+        service_identity, final_field);
+    if (path_length < 0 || (size_t)path_length >= sizeof(path) ||
+        expected_length < 0 || (size_t)expected_length >= sizeof(expected)) {
+        return 0;
+    }
+    descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return 0;
+    if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode) ||
+        status.st_size != expected_length) {
+        (void)close(descriptor);
+        return 0;
+    }
+    count = read(descriptor, actual, sizeof(actual));
+    (void)close(descriptor);
+    return count == expected_length &&
+           memcmp(actual, expected, (size_t)expected_length) == 0;
+}
+
+static int resident_ready(const struct supervisor *supervisor,
+                          const char *service_identity) {
+    return resident_marker_matches(supervisor, service_identity, "ready",
+                                   "state=ready");
+}
+
+static void observe_resident_readiness(struct supervisor *supervisor,
+                                       enum node_p01_stage stage) {
+    size_t index;
+    if (supervisor->mode != NODE_MODE_LAB) return;
+    for (index = 0; index < supervisor->manifest.service_count; ++index) {
+        const struct node_p01_service *service =
+            &supervisor->manifest.services[index];
+        struct service_runtime *runtime = &supervisor->runtime[index];
+        if (service->stage != stage || !service->resident_capable ||
+            runtime->resident_ready || runtime->finished || runtime->pid <= 0) {
+            continue;
+        }
+        if (resident_ready(supervisor, service->identity)) {
+            runtime->resident_ready = 1;
+            runtime->semantic_success = 1;
+            emit_json("resident_service_readiness", service->identity,
+                      "ready", "service remains under permanent PID 1 supervision");
+        }
+    }
+}
+
 static int dependencies_succeeded(const struct supervisor *supervisor,
                                   size_t service_index_value,
                                   int *blocked) {
@@ -604,7 +722,9 @@ static int dependencies_succeeded(const struct supervisor *supervisor,
              ++candidate) {
             if (strcmp(supervisor->manifest.services[candidate].identity,
                        service->dependencies[dependency_index]) == 0) {
-                if (!supervisor->runtime[candidate].finished) return 0;
+                if (!supervisor->runtime[candidate].finished &&
+                    !supervisor->runtime[candidate].resident_ready) return 0;
+                if (supervisor->runtime[candidate].resident_ready) break;
                 if (!supervisor->runtime[candidate].semantic_success) *blocked = 1;
                 break;
             }
@@ -690,11 +810,13 @@ static int run_stage(struct supervisor *supervisor, enum node_p01_stage stage) {
             supervisor->concurrent_overlap_observed = 1;
         }
         reap_children(supervisor);
+        observe_resident_readiness(supervisor, stage);
         now = monotonic_milliseconds();
         for (index = 0; index < supervisor->manifest.service_count; ++index) {
             const struct node_p01_service *service = &supervisor->manifest.services[index];
             struct service_runtime *runtime = &supervisor->runtime[index];
-            if (service->stage != stage || runtime->finished || runtime->pid <= 0) {
+            if (service->stage != stage || runtime->finished ||
+                runtime->resident_ready || runtime->pid <= 0) {
                 continue;
             }
             if (supervisor->shutdown_requested) {
@@ -715,13 +837,15 @@ static int run_stage(struct supervisor *supervisor, enum node_p01_stage stage) {
         if (now - stage_start >= NODE_P01_STAGE_TIMEOUT_MS) {
             for (index = 0; index < supervisor->manifest.service_count; ++index) {
                 if (supervisor->manifest.services[index].stage == stage) {
+                    if (supervisor->runtime[index].resident_ready) continue;
                     request_termination(supervisor, index, PROCESS_TIMEOUT);
                 }
             }
         }
         for (index = 0; index < supervisor->manifest.service_count; ++index) {
             if (supervisor->manifest.services[index].stage == stage &&
-                !supervisor->runtime[index].finished) {
+                !supervisor->runtime[index].finished &&
+                !supervisor->runtime[index].resident_ready) {
                 ++unfinished;
             }
         }
@@ -773,6 +897,224 @@ static int verify_no_children(void) {
     return result < 0 && errno == ECHILD;
 }
 
+static int service_runtime_index(const struct supervisor *supervisor,
+                                 const char *identity) {
+    size_t index;
+    for (index = 0; index < supervisor->manifest.service_count; ++index) {
+        if (strcmp(supervisor->manifest.services[index].identity, identity) == 0) {
+            return (int)index;
+        }
+    }
+    return -1;
+}
+
+static int read_cpu_decision(const struct supervisor *supervisor) {
+    char path[2 * NODE_P01_MAX_PATH_BYTES];
+    char content[2049];
+    struct stat status;
+    const char *root = supervisor->host_mode ? supervisor->host_root : "";
+    int length = snprintf(
+        path, sizeof(path),
+        "%s/run/node-p01-results/cpu-assembly-decision.v1", root);
+    int descriptor;
+    ssize_t count;
+    if (length < 0 || (size_t)length >= sizeof(path)) return 0;
+    descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) return 0;
+    if (fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode) ||
+        status.st_size <= 0 || status.st_size > 2048) {
+        (void)close(descriptor);
+        return 0;
+    }
+    count = read(descriptor, content, (size_t)status.st_size);
+    (void)close(descriptor);
+    if (count != status.st_size) return 0;
+    content[count] = '\0';
+    return strstr(content, "\nevaluation=compatible\n") != NULL &&
+           strstr(content, "\ncpu_runtime=required\n") != NULL &&
+           strstr(content, "\ngpu_runtime=not_required\n") != NULL &&
+           strstr(content, "\narchitecture=x86_64\n") != NULL &&
+           strstr(content, "\nprofile=avx2\n") != NULL;
+}
+
+static int resident_service_alive(const struct supervisor *supervisor,
+                                  int index) {
+    return index >= 0 && supervisor->runtime[(size_t)index].resident_ready &&
+           !supervisor->runtime[(size_t)index].finished &&
+           supervisor->runtime[(size_t)index].pid > 0;
+}
+
+static void stop_resident_services(struct supervisor *supervisor) {
+    uint64_t deadline;
+    size_t index;
+    for (index = 0; index < supervisor->manifest.service_count; ++index) {
+        struct service_runtime *runtime = &supervisor->runtime[index];
+        const struct node_p01_service *service =
+            &supervisor->manifest.services[index];
+        if (!service->resident_capable || runtime->finished || runtime->pid <= 0) {
+            continue;
+        }
+        runtime->termination_requested = 1;
+        runtime->termination_requested_ms = monotonic_milliseconds();
+        if (kill(-runtime->pid, SIGTERM) != 0 && errno != ESRCH) {
+            runtime->outcome = PROCESS_INDETERMINATE;
+        }
+    }
+    deadline = monotonic_milliseconds() + UINT64_C(1000);
+    for (;;) {
+        size_t active = 0;
+        uint64_t now;
+        reap_children(supervisor);
+        for (index = 0; index < supervisor->manifest.service_count; ++index) {
+            struct service_runtime *runtime = &supervisor->runtime[index];
+            const struct node_p01_service *service =
+                &supervisor->manifest.services[index];
+            if (!service->resident_capable || runtime->finished || runtime->pid <= 0) {
+                continue;
+            }
+            ++active;
+            now = monotonic_milliseconds();
+            if (!runtime->force_requested &&
+                now - runtime->termination_requested_ms >=
+                    NODE_P01_TERMINATION_GRACE_MS) {
+                if (kill(-runtime->pid, SIGKILL) != 0 && errno != ESRCH) {
+                    runtime->outcome = PROCESS_INDETERMINATE;
+                } else {
+                    runtime->outcome = PROCESS_TIMEOUT;
+                }
+                runtime->force_requested = 1;
+            }
+        }
+        if (active == 0U || monotonic_milliseconds() >= deadline) break;
+        {
+            struct pollfd descriptor = {supervisor->signal_fd, POLLIN, 0};
+            (void)poll(&descriptor, 1, 20);
+            if ((descriptor.revents & POLLIN) != 0) {
+                process_signal_events(supervisor);
+            }
+        }
+    }
+    reap_children(supervisor);
+}
+
+static int run_resident_supervision(struct supervisor *supervisor,
+                                    int required_scope_complete) {
+    const int cpu_index = service_runtime_index(
+        supervisor, "cpu_runtime_assembly");
+    const int acs_index = service_runtime_index(
+        supervisor, "acs_reference_transport");
+    struct node_runtime_transition_evidence evidence;
+    enum node_runtime_transition_code transition;
+    int cpu_alive;
+    int acs_alive;
+    uint64_t probe_deadline;
+
+    (void)memset(&evidence, 0, sizeof(evidence));
+    cpu_alive = resident_service_alive(supervisor, cpu_index);
+    acs_alive = resident_service_alive(supervisor, acs_index);
+    evidence.required_startup_complete = (uint8_t)required_scope_complete;
+    evidence.cpu_decision_compatible = (uint8_t)read_cpu_decision(supervisor);
+    evidence.cpu_runtime_required = evidence.cpu_decision_compatible;
+    evidence.cpu_runtime_validated = (uint8_t)cpu_alive;
+    evidence.cpu_runtime_activated = (uint8_t)cpu_alive;
+    evidence.cpu_initial_probe_passed = (uint8_t)cpu_alive;
+    evidence.acs_initialized = (uint8_t)acs_alive;
+    evidence.acs_exchange_complete = (uint8_t)acs_alive;
+    evidence.evidence_complete = (uint8_t)(
+        evidence.cpu_decision_compatible && cpu_alive && acs_alive);
+
+    emit_json("runtime_transition_requested", NODE_P01_BOOT_IDENTITY,
+              "transition_pending",
+              "current boot lab profile requested bounded runtime transition");
+    transition = node_runtime_transition_evaluate(&evidence);
+    emit_json("runtime_transition_evaluation", NODE_P01_BOOT_IDENTITY,
+              transition == NODE_RUNTIME_TRANSITION_ACCEPTED
+                  ? "accepted" : "refused",
+              node_runtime_transition_code_name(transition));
+    if (transition != NODE_RUNTIME_TRANSITION_ACCEPTED) {
+        stop_resident_services(supervisor);
+        emit_json("resident_supervision_exited", NODE_P01_BOOT_IDENTITY,
+                  "runtime_transition_refused",
+                  node_runtime_transition_code_name(transition));
+        return 0;
+    }
+
+    supervisor->resident_phase = 1;
+    emit_json("runtime_ready", NODE_P01_BOOT_IDENTITY, "ready",
+              "scope=current_boot_lab,cpu=x86_64-avx2,acs=public_reference");
+    emit_json("resident_supervision_entered", NODE_P01_BOOT_IDENTITY,
+              "resident", "permanent PID 1 supervising CPU runtime and ACS");
+
+    if (kill(supervisor->runtime[(size_t)cpu_index].pid, SIGUSR1) != 0) {
+        emit_json("runtime_post_transition_probe", "cpu_runtime_assembly",
+                  "failed", "post-transition probe request could not be delivered");
+        stop_resident_services(supervisor);
+        emit_json("resident_supervision_exited", NODE_P01_BOOT_IDENTITY,
+                  "runtime_degraded", "CPU probe request failed");
+        return 0;
+    }
+    probe_deadline = monotonic_milliseconds() +
+                     NODE_RUNTIME_POST_PROBE_TIMEOUT_MS;
+    while (!resident_marker_matches(
+               supervisor, "cpu_runtime_assembly", "healthy",
+               "post_transition_probe=passed")) {
+        struct pollfd descriptor = {supervisor->signal_fd, POLLIN, 0};
+        reap_children(supervisor);
+        cpu_alive = resident_service_alive(supervisor, cpu_index);
+        acs_alive = resident_service_alive(supervisor, acs_index);
+        if (!cpu_alive || !acs_alive || supervisor->shutdown_requested ||
+            monotonic_milliseconds() >= probe_deadline) {
+            enum node_resident_health_code health =
+                node_resident_health_evaluate(0U,
+                    (uint8_t)(cpu_alive && acs_alive),
+                    (uint8_t)supervisor->shutdown_requested);
+            emit_json("runtime_post_transition_probe", "cpu_runtime_assembly",
+                      "failed", node_resident_health_code_name(health));
+            stop_resident_services(supervisor);
+            emit_json("resident_supervision_exited", NODE_P01_BOOT_IDENTITY,
+                      supervisor->shutdown_requested ? "shutdown_complete"
+                                                     : "runtime_degraded",
+                      node_resident_health_code_name(health));
+            return supervisor->shutdown_requested;
+        }
+        (void)poll(&descriptor, 1, 20);
+        if ((descriptor.revents & POLLIN) != 0) {
+            process_signal_events(supervisor);
+        }
+    }
+    emit_json("runtime_post_transition_probe", "cpu_runtime_assembly",
+              "passed", "resident AVX2 execution result matched 120");
+
+    for (;;) {
+        struct pollfd descriptor = {supervisor->signal_fd, POLLIN, 0};
+        reap_children(supervisor);
+        cpu_alive = resident_service_alive(supervisor, cpu_index);
+        acs_alive = resident_service_alive(supervisor, acs_index);
+        if (!cpu_alive || !acs_alive) {
+            emit_json("runtime_degraded", NODE_P01_BOOT_IDENTITY,
+                      "essential_service_exited",
+                      !cpu_alive ? "cpu_runtime_assembly" :
+                                   "acs_reference_transport");
+            stop_resident_services(supervisor);
+            emit_json("resident_supervision_exited", NODE_P01_BOOT_IDENTITY,
+                      "runtime_degraded", "essential resident service exited");
+            return 0;
+        }
+        if (supervisor->shutdown_requested) {
+            emit_json("shutdown_requested", NODE_P01_BOOT_IDENTITY,
+                      "operator_signal", "bounded resident shutdown started");
+            stop_resident_services(supervisor);
+            emit_json("resident_supervision_exited", NODE_P01_BOOT_IDENTITY,
+                      "shutdown_complete", "resident children stopped and reaped");
+            return 1;
+        }
+        (void)poll(&descriptor, 1, 100);
+        if ((descriptor.revents & POLLIN) != 0) {
+            process_signal_events(supervisor);
+        }
+    }
+}
+
 static int run_supervisor(struct supervisor *supervisor) {
     enum node_p01_stage stage;
     int required_scope_complete = 1;
@@ -784,6 +1126,21 @@ static int run_supervisor(struct supervisor *supervisor) {
             cancel_later_services(supervisor, stage);
             break;
         }
+    }
+    if (supervisor->mode == NODE_MODE_LAB) {
+        const int resident_shutdown = run_resident_supervision(
+            supervisor, required_scope_complete);
+        reap_children(supervisor);
+        emit_json("child_reaping", "pid1_children",
+                  verify_no_children() ? "zombie_free" : "indeterminate",
+                  "resident supervision child table inspection complete");
+        emit_json("micro_os_final_result", NODE_P01_BOOT_IDENTITY,
+                  resident_shutdown ? "resident_shutdown_complete"
+                                    : "runtime_degraded",
+                  resident_shutdown
+                      ? "explicit resident shutdown completed"
+                      : "runtime transition or resident supervision failed");
+        return resident_shutdown ? 0 : 2;
     }
     reap_children(supervisor);
     emit_json("child_reaping", "pid1_children",
@@ -919,6 +1276,13 @@ int main(int argument_count, char **arguments) {
         }
         return 66;
     }
+    if (!supervisor.host_mode) apply_platform_mode(&options);
+    supervisor.mode = options.mode;
+    emit_json("runtime_mode_selection", NODE_P01_BOOT_IDENTITY,
+              options.mode == NODE_MODE_LAB ? "lab" : "conformance",
+              options.mode_explicit
+                  ? "explicit kernel command-line selection"
+                  : "explicit development profile or bounded default");
     if (manifest_override != NULL) {
         (void)snprintf(manifest_path, sizeof(manifest_path), "%s", manifest_override);
     } else {

@@ -52,6 +52,7 @@ fi
 cmake --build "${node_build}" --parallel 1 --target \
     node_p01_init \
     node_p01_manifest_tests \
+    node_runtime_transition_tests \
     node_cpu_assembly_decision_tests \
     node_cpu_runtime_assembly_tests \
     node_p01_identity_probe \

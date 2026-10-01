@@ -8,8 +8,11 @@
 #include <linux/if.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/ioctl.h>
+#include <sys/signalfd.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -31,6 +34,8 @@ constexpr std::size_t kMaximumPeers = 16;
 constexpr std::size_t kMaximumProfileBytes = 512;
 constexpr const char* kSchema = "public.transport.conformance.v1";
 constexpr const char* kScope = "public.transport.conformance";
+constexpr const char* kResidentReadyPath =
+    "/run/node-p01-results/acs_reference_transport.ready";
 
 struct Peer { std::string node; std::string address; };
 struct Profile {
@@ -75,6 +80,7 @@ struct PeerContext {
     bool sent = false;
     bool received = false;
     bool duplicate_reported = false;
+    bool resident_activity_reported = false;
 };
 
 int event_output_fd = STDOUT_FILENO;
@@ -111,6 +117,133 @@ void emit(const char* record, const std::string& local, const std::string& peer,
 void emit_local(const char* record, const std::string& local,
                 const char* outcome, const char* detail) noexcept {
     emit(record, local, "", outcome, "", "", detail);
+}
+
+bool lab_mode() noexcept {
+    const char* mode = std::getenv("NODE_MICRO_OS_MODE");
+    return mode != nullptr && std::strcmp(mode, "lab") == 0;
+}
+
+bool write_ready_marker() noexcept {
+    struct stat existing {};
+    if (lstat(kResidentReadyPath, &existing) == 0) {
+        if (!S_ISREG(existing.st_mode) || unlink(kResidentReadyPath) != 0) {
+            return false;
+        }
+    } else if (errno != ENOENT) {
+        return false;
+    }
+    const int descriptor = open(
+        kResidentReadyPath,
+        O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+        0600);
+    if (descriptor < 0) return false;
+    constexpr char value[] =
+        "schema=node.resident-service-ready.v1\n"
+        "service=acs_reference_transport\n"
+        "state=ready\n";
+    std::size_t offset = 0;
+    while (offset < sizeof(value) - 1U) {
+        const ssize_t count = write(
+            descriptor, value + offset, sizeof(value) - 1U - offset);
+        if (count > 0) offset += static_cast<std::size_t>(count);
+        else if (count < 0 && errno == EINTR) continue;
+        else break;
+    }
+    const int closed = close(descriptor);
+    const bool success = offset == sizeof(value) - 1U && closed == 0;
+    if (!success) (void)unlink(kResidentReadyPath);
+    return success;
+}
+
+std::string correlation(const acs::SignalEnvelope& envelope);
+
+int remain_resident(const Profile& profile, int descriptor,
+                    std::vector<PeerContext>& contexts) {
+    if (!write_ready_marker()) {
+        emit_local("acs_resident", profile.node, "failed",
+                   "resident_readiness_marker_failed");
+        return 27;
+    }
+    emit_local("acs_resident", profile.node, "active",
+               "public_reference_transport_current_boot_lab_scope");
+    sigset_t signals;
+    (void)sigemptyset(&signals);
+    (void)sigaddset(&signals, SIGTERM);
+    (void)sigaddset(&signals, SIGINT);
+    const int signal_descriptor = signalfd(
+        -1, &signals, SFD_CLOEXEC | SFD_NONBLOCK);
+    if (signal_descriptor < 0) {
+        (void)unlink(kResidentReadyPath);
+        return 28;
+    }
+    bool stopped = false;
+    std::array<std::uint8_t, acs::kReferenceWireMaximumBytes> received{};
+    while (!stopped) {
+        std::array<pollfd, 2> waits{{
+            {signal_descriptor, POLLIN, 0},
+            {descriptor, POLLIN, 0},
+        }};
+        const int polled = poll(waits.data(), waits.size(), kPollMilliseconds);
+        if (polled < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if ((waits[0].revents & POLLIN) != 0) {
+            signalfd_siginfo information{};
+            if (read(signal_descriptor, &information, sizeof(information)) ==
+                static_cast<ssize_t>(sizeof(information))) {
+                stopped = true;
+            }
+        }
+        if ((waits[1].revents & POLLIN) != 0) {
+            sockaddr_in source{};
+            iovec vector{received.data(), received.size()};
+            msghdr message{};
+            message.msg_name = &source;
+            message.msg_namelen = sizeof(source);
+            message.msg_iov = &vector;
+            message.msg_iovlen = 1;
+            const ssize_t count = recvmsg(descriptor, &message, MSG_TRUNC);
+            if (count <= 0 || static_cast<std::size_t>(count) > received.size()) {
+                continue;
+            }
+            auto context = std::find_if(
+                contexts.begin(), contexts.end(),
+                [&source](const PeerContext& item) {
+                    return source.sin_addr.s_addr == item.endpoint.sin_addr.s_addr &&
+                           source.sin_port == item.endpoint.sin_port;
+                });
+            if (context == contexts.end()) continue;
+            acs::SignalEnvelope decoded{};
+            const auto decoded_result = acs::decode_reference_signal(
+                received.data(), static_cast<std::size_t>(count), decoded);
+            if (!decoded_result.ok()) continue;
+            const auto validation = acs::validate_transport_submission(
+                context->incoming.registry, context->incoming.state,
+                context->incoming.admission, context->incoming.binding,
+                context->incoming.attachment, decoded);
+            if (!validation.valid()) continue;
+            const ssize_t sent = sendto(
+                descriptor, context->encoded.data(), context->encoded_bytes, 0,
+                reinterpret_cast<const sockaddr*>(&context->endpoint),
+                sizeof(context->endpoint));
+            if (sent == static_cast<ssize_t>(context->encoded_bytes) &&
+                !context->resident_activity_reported) {
+                context->resident_activity_reported = true;
+                emit("acs_resident_peer_activity", profile.node,
+                     context->peer.node, "validated_and_replied",
+                     decoded.id.canonical(), correlation(decoded),
+                     "bounded_rejoin_conformance_response");
+            }
+        }
+    }
+    (void)close(signal_descriptor);
+    (void)unlink(kResidentReadyPath);
+    emit_local("acs_resident", profile.node,
+               stopped ? "stopped" : "failed",
+               stopped ? "bounded_shutdown_complete" : "resident_poll_failed");
+    return stopped ? 0 : 28;
 }
 
 template <typename Id>
@@ -629,12 +762,19 @@ int run_transport(const Profile& profile) {
              context.received ? "peer_exchange_validated"
                               : "bounded_wait_expired_without_valid_signal");
     }
+    if (complete && lab_mode()) {
+        emit_local("acs_exchange_complete", profile.node, "complete",
+                   "all_peer_exchanges_validated_before_residency");
+        const int resident_result = remain_resident(profile, descriptor, contexts);
+        (void)close(descriptor);
+        return resident_result;
+    }
     emit_local("acs_transport_closed", profile.node,
                complete ? "closed" : "peer_unavailable",
                complete ? "all_peer_exchanges_complete"
                         : "one_or_more_peer_exchanges_unavailable");
     (void)close(descriptor);
-    return 0;
+    return complete || !lab_mode() ? 0 : 29;
 }
 
 }  // namespace
@@ -647,6 +787,17 @@ int main() {
     }
     const int serial = open("/dev/ttyS0", O_WRONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (serial >= 0) event_output_fd = serial;
+    if (lab_mode()) {
+        sigset_t signals;
+        (void)sigemptyset(&signals);
+        (void)sigaddset(&signals, SIGTERM);
+        (void)sigaddset(&signals, SIGINT);
+        if (sigprocmask(SIG_BLOCK, &signals, nullptr) != 0) {
+            emit_local("acs_resident", "unmanaged-node", "failed",
+                       "signal_mask_failed");
+            return 27;
+        }
+    }
     const auto profile = read_profile();
     if (!profile) {
         emit_local("acs_transport_initialized", "unmanaged-node", "unavailable",

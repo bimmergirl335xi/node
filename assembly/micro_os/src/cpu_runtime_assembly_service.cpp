@@ -539,7 +539,21 @@ int main() {
         "/dev/ttyS0", O_WRONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (serial >= 0) event_output_fd = serial;
     try {
-        return run();
+        const int result = run();
+        const char* mode = std::getenv("NODE_MICRO_OS_MODE");
+        if (result == 0 && mode != nullptr && std::strcmp(mode, "lab") == 0) {
+            std::string root{};
+            if (!root_prefix(root)) return 47;
+            const std::string executable = rooted(root, kActivePath);
+            execl(executable.c_str(), executable.c_str(), "--resident",
+                  static_cast<char*>(nullptr));
+            emit("{\"record\":\"cpu_runtime_resident\","
+                 "\"subject\":\"node.cpu.runtime\","
+                 "\"outcome\":\"failed\","
+                 "\"detail\":\"resident_exec_failed\"}\n");
+            return 47;
+        }
+        return result;
     } catch (...) {
         emit_phase_result("unmanaged-node", "failed", false, false, false,
                           false, "exception_contained");

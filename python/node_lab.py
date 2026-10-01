@@ -421,10 +421,12 @@ def profile_peer_parts(
     return ";".join(entries[:midpoint]), ";".join(entries[midpoint:])
 
 
-def smbios_argument(profile: NodeProfile, profiles: dict[str, NodeProfile]) -> str:
+def smbios_argument(
+    profile: NodeProfile, profiles: dict[str, NodeProfile], mode: str
+) -> str:
     peers_a, peers_b = profile_peer_parts(profile, profiles)
     return (
-        f"type=1,manufacturer={peers_a},product=Node-Development-VM,"
+        f"type=1,manufacturer={peers_a},product=Node-Development-VM-{mode},"
         f"version=acs-profile-v1-port-{profile.acs_port},"
         f"serial={profile.node_id},sku={profile.ipv4_address.split('/', 1)[0]},"
         f"family={peers_b}"
@@ -439,14 +441,21 @@ def matches_managed_qemu(
     executable = Path(info.argv[0]).name
     marker = f"guest={profile.node_id},process={profile.node_id}"
     netdev, device = network_arguments(profile)
-    smbios = smbios_argument(profile, load_profiles())
+    profiles = load_profiles()
+    smbios_values = tuple(
+        smbios_argument(profile, profiles, mode)
+        for mode in ("conformance", "lab")
+    )
     return (
         executable.startswith("qemu-system-")
         and has_argument_pair(info.argv, "-name", marker)
         and has_argument_pair(info.argv, "-cdrom", str(expected_iso))
         and has_argument_pair(info.argv, "-netdev", netdev)
         and has_argument_pair(info.argv, "-device", device)
-        and has_argument_pair(info.argv, "-smbios", smbios)
+        and any(
+            has_argument_pair(info.argv, "-smbios", value)
+            for value in smbios_values
+        )
     )
 
 
@@ -603,8 +612,10 @@ def launch_command(profile: NodeProfile, debug: bool) -> list[str]:
 
 def start_node(
     profile: NodeProfile, force_debug: bool, *, emit_output: bool = True,
-    known_iso_sha: str | None = None
+    known_iso_sha: str | None = None, mode: str = "conformance"
 ) -> dict[str, Any]:
+    if mode not in ("conformance", "lab"):
+        raise LabError("node mode must be conformance or lab")
     paths = instance_paths(profile)
     with InstanceLock(paths):
         iso_sha = known_iso_sha if known_iso_sha is not None else validate_iso()
@@ -639,6 +650,7 @@ def start_node(
             "NODE_QEMU_VCPUS",
             "NODE_QEMU_MEMORY_MB",
             "NODE_QEMU_TIMEOUT_SECONDS",
+            "NODE_QEMU_MODE",
             "NODE_QEMU_NETWORK_ENABLED",
             "NODE_QEMU_NETWORK_MAC",
             "NODE_QEMU_NETWORK_MULTICAST_ADDRESS",
@@ -657,7 +669,10 @@ def start_node(
                 "NODE_QEMU_NODE_ID": profile.node_id,
                 "NODE_QEMU_VCPUS": str(profile.vcpus),
                 "NODE_QEMU_MEMORY_MB": str(profile.memory_mb),
-                "NODE_QEMU_TIMEOUT_SECONDS": "600" if debug else "90",
+                "NODE_QEMU_TIMEOUT_SECONDS": (
+                    "0" if mode == "lab" else ("600" if debug else "90")
+                ),
+                "NODE_QEMU_MODE": mode,
                 "NODE_QEMU_NETWORK_ENABLED": "1",
                 "NODE_QEMU_NETWORK_MAC": profile.mac_address,
                 "NODE_QEMU_NETWORK_MULTICAST_ADDRESS": profile.network_multicast_address,
@@ -702,6 +717,7 @@ def start_node(
             "firmware": profile.firmware,
             "vcpus": profile.vcpus,
             "memory_mb": profile.memory_mb,
+            "mode": mode,
             "network_backend": "loopback_multicast_dgram_lan",
             "network_multicast_address": profile.network_multicast_address,
             "network_multicast_port": profile.network_multicast_port,
@@ -773,6 +789,7 @@ def start_node(
             "node_id": profile.node_id,
             "qemu_pid": qemu.pid,
             "firmware": profile.firmware,
+            "mode": mode,
             "debug_enabled": debug,
             "network_attachment": network_attachment(profile, qemu),
             "acs_peers": list(profile.acs_peers),
@@ -790,7 +807,7 @@ def start_node(
 def print_start_result(result: dict[str, Any]) -> None:
     print(f"started: {result['node_id']}")
     for key in (
-        "qemu_pid", "firmware", "debug_enabled", "network_attachment",
+        "qemu_pid", "firmware", "mode", "debug_enabled", "network_attachment",
         "acs_peers", "mac_address", "acs_reference_address",
         "acs_reference_udp_port", "serial_log", "event_log"
     ):
@@ -899,18 +916,25 @@ def stop_node(
 
 
 def read_events(paths: InstancePaths) -> tuple[list[dict[str, Any]], list[str]]:
-    if not paths.event_log.exists():
+    live_serial = not paths.event_log.exists() and paths.serial_log.exists()
+    source_path = paths.serial_log if live_serial else paths.event_log
+    if not source_path.exists():
         return [], []
     try:
-        if paths.event_log.is_symlink() or not paths.event_log.is_file():
-            raise LabError(f"event log is not a regular file: {paths.event_log}")
-        with paths.event_log.open("rb") as source:
+        if source_path.is_symlink() or not source_path.is_file():
+            raise LabError(f"event source is not a regular file: {source_path}")
+        with source_path.open("rb") as source:
             data = source.read(MAX_EVENT_BYTES + 1)
     except OSError as error:
         raise LabError(f"cannot read event log: {error}") from error
     if len(data) > MAX_EVENT_BYTES:
         raise LabError(f"event log exceeds the {MAX_EVENT_BYTES}-byte bound")
     lines = data.splitlines()
+    if live_serial:
+        lines = [
+            line for line in lines
+            if line.startswith(b'{"record":"') and line.endswith(b"}")
+        ]
     if len(lines) > MAX_EVENT_LINES:
         raise LabError(f"event log exceeds the {MAX_EVENT_LINES}-record bound")
     events: list[dict[str, Any]] = []
@@ -971,6 +995,7 @@ def print_status(profile: NodeProfile) -> None:
         print(f"state: {'running' if info is not None else 'stopped'}")
         print(f"state_detail: {detail}")
         print(f"qemu_pid: {info.pid if info is not None else '-'}")
+        print(f"mode: {str((state or {}).get('mode', 'unknown'))[:32]}")
         print(f"firmware: {profile.firmware}")
         print(f"vcpus: {profile.vcpus}")
         print(f"memory_mb: {profile.memory_mb}")
@@ -994,21 +1019,25 @@ def print_status(profile: NodeProfile) -> None:
 
 def print_list() -> None:
     profiles = load_profiles()
-    print("NODE ID\tSTATE\tPID\tFIRMWARE\tLAST BOOT RESULT\tNETWORK")
+    print("NODE ID\tSTATE\tPID\tMODE\tFIRMWARE\tLAST BOOT RESULT\tNETWORK")
     for node_id in sorted(profiles):
         profile = profiles[node_id]
         paths = instance_paths(profile)
         with InstanceLock(paths):
-            _, info, _ = reconcile(profile, paths)
+            state, info, _ = reconcile(profile, paths)
             _, final, _ = event_summary(paths)
         print(
             f"{node_id}\t{'running' if info else 'stopped'}\t"
-            f"{info.pid if info else '-'}\t{profile.firmware}\t{final}\t"
+            f"{info.pid if info else '-'}\t"
+            f"{str((state or {}).get('mode', 'unknown'))[:32]}\t"
+            f"{profile.firmware}\t{final}\t"
             f"{network_attachment(profile, info)}"
         )
 
 
-def run_group_operation(operation: str, force_debug: bool = False) -> None:
+def run_group_operation(
+    operation: str, force_debug: bool = False, mode: str = "conformance"
+) -> None:
     profiles = load_profiles()
     ordered = [profiles[node_id] for node_id in sorted(profiles)]
     iso_sha = validate_iso() if operation in ("start", "restart") else None
@@ -1016,13 +1045,15 @@ def run_group_operation(operation: str, force_debug: bool = False) -> None:
     def invoke(profile: NodeProfile) -> dict[str, Any]:
         if operation == "start":
             return start_node(
-                profile, force_debug, emit_output=False, known_iso_sha=iso_sha
+                profile, force_debug, emit_output=False, known_iso_sha=iso_sha,
+                mode=mode,
             )
         if operation == "stop":
             return stop_node(profile, emit_output=False)
         stop_node(profile, emit_output=False)
         return start_node(
-            profile, force_debug, emit_output=False, known_iso_sha=iso_sha
+            profile, force_debug, emit_output=False, known_iso_sha=iso_sha,
+            mode=mode,
         )
 
     results: dict[str, dict[str, Any]] = {}
@@ -1046,7 +1077,7 @@ def run_group_operation(operation: str, force_debug: bool = False) -> None:
             result = results[profile.node_id]
             print(
                 f"started: {profile.node_id} qemu_pid={result['qemu_pid']} "
-                f"network={result['network_attachment']}"
+                f"mode={result['mode']} network={result['network_attachment']}"
             )
     if failures:
         raise LabError(
@@ -1316,6 +1347,81 @@ def print_cpu_runtime_summary() -> None:
         raise LabError("one or more managed nodes lack complete CPU runtime evidence")
 
 
+def resident_runtime_summary(profile: NodeProfile) -> dict[str, str]:
+    paths = instance_paths(profile)
+    events, malformed = read_events(paths)
+    if malformed:
+        raise LabError(f"event log contains {len(malformed)} malformed record(s)")
+    latest: dict[str, dict[str, Any]] = {}
+    observed_records = {
+        "runtime_mode_selection",
+        "runtime_transition_evaluation",
+        "runtime_ready",
+        "resident_supervision_entered",
+        "cpu_runtime_resident",
+        "acs_resident",
+        "runtime_post_transition_probe",
+        "resident_supervision_exited",
+    }
+    for event in events:
+        record = event.get("record")
+        if isinstance(record, str) and record in observed_records:
+            latest[record] = event
+
+    def outcome(record: str) -> str:
+        value = latest.get(record, {}).get("outcome", "not_observed")
+        return str(value)[:128]
+
+    with InstanceLock(paths):
+        state, process, _ = reconcile(profile, paths)
+    return {
+        "node_id": profile.node_id,
+        "vm": "running" if process is not None else "stopped",
+        "mode": str((state or {}).get("mode", outcome("runtime_mode_selection")))[:32],
+        "transition": outcome("runtime_transition_evaluation"),
+        "runtime_ready": outcome("runtime_ready"),
+        "resident": outcome("resident_supervision_entered"),
+        "cpu": outcome("cpu_runtime_resident"),
+        "acs": outcome("acs_resident"),
+        "post_probe": outcome("runtime_post_transition_probe"),
+        "resident_exit": outcome("resident_supervision_exited"),
+        "event_source": str(
+            paths.event_log if paths.event_log.exists() else paths.serial_log
+        ),
+    }
+
+
+def print_runtime_status(profile: NodeProfile) -> None:
+    summary = resident_runtime_summary(profile)
+    for key, value in summary.items():
+        print(f"{key}: {value}")
+
+
+def print_runtime_summary() -> None:
+    profiles = load_profiles()
+    print("NODE ID\tVM\tMODE\tTRANSITION\tRUNTIME\tCPU\tACS\tPOST-PROBE")
+    incomplete = False
+    for node_id in sorted(profiles):
+        summary = resident_runtime_summary(profiles[node_id])
+        print(
+            f"{node_id}\t{summary['vm']}\t{summary['mode']}\t"
+            f"{summary['transition']}\t{summary['runtime_ready']}\t"
+            f"{summary['cpu']}\t{summary['acs']}\t{summary['post_probe']}"
+        )
+        incomplete = incomplete or not (
+            summary["vm"] == "running"
+            and summary["mode"] == "lab"
+            and summary["transition"] == "accepted"
+            and summary["runtime_ready"] == "ready"
+            and summary["resident"] == "resident"
+            and summary["cpu"] == "active"
+            and summary["acs"] == "active"
+            and summary["post_probe"] == "passed"
+        )
+    if incomplete:
+        raise LabError("one or more managed nodes are not resident and runtime-ready")
+
+
 def print_serial(profile: NodeProfile, lines: int) -> None:
     path = instance_paths(profile).serial_log
     try:
@@ -1373,20 +1479,35 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "cpu-runtime-summary", help="summarize five-node CPU runtime evidence"
     )
+    commands.add_parser(
+        "runtime-summary", help="summarize five-node resident runtime evidence"
+    )
     commands.add_parser("stop-all", help="concurrently stop every managed node")
     start_all = commands.add_parser("start-all", help="concurrently start every managed node")
     start_all.add_argument("--debug", action="store_true")
+    start_all.add_argument(
+        "--mode", choices=("conformance", "lab"), default="conformance"
+    )
     restart_all = commands.add_parser(
         "restart-all", help="concurrently restart every managed node"
     )
     restart_all.add_argument("--debug", action="store_true")
-    for name in ("status", "stop", "debug-info", "cpu-info", "cpu-runtime"):
+    restart_all.add_argument(
+        "--mode", choices=("conformance", "lab"), default="conformance"
+    )
+    for name in (
+        "status", "stop", "debug-info", "cpu-info", "cpu-runtime",
+        "runtime-status",
+    ):
         command = commands.add_parser(name)
         command.add_argument("node_id")
     for name in ("start", "restart"):
         command = commands.add_parser(name)
         command.add_argument("node_id")
         command.add_argument("--debug", action="store_true")
+        command.add_argument(
+            "--mode", choices=("conformance", "lab"), default="conformance"
+        )
     events = commands.add_parser("events")
     events.add_argument("node_id")
     events.add_argument(
@@ -1420,25 +1541,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "cpu-runtime-summary":
             print_cpu_runtime_summary()
             return 0
+        if args.command == "runtime-summary":
+            print_runtime_summary()
+            return 0
         if args.command == "start-all":
-            run_group_operation("start", args.debug)
+            run_group_operation("start", args.debug, args.mode)
             return 0
         if args.command == "stop-all":
             run_group_operation("stop")
             return 0
         if args.command == "restart-all":
-            run_group_operation("restart", args.debug)
+            run_group_operation("restart", args.debug, args.mode)
             return 0
         profile = select_profile(args.node_id)
         if args.command == "status":
             print_status(profile)
         elif args.command == "start":
-            start_node(profile, args.debug)
+            start_node(profile, args.debug, mode=args.mode)
         elif args.command == "stop":
             stop_node(profile)
         elif args.command == "restart":
             stop_node(profile, allow_stopped=True)
-            start_node(profile, args.debug)
+            start_node(profile, args.debug, mode=args.mode)
         elif args.command == "events":
             print_events(profile, args.limit)
         elif args.command == "acs-events":
@@ -1447,6 +1571,8 @@ def main(argv: list[str] | None = None) -> int:
             print_cpu_info(profile)
         elif args.command == "cpu-runtime":
             print_cpu_runtime(profile)
+        elif args.command == "runtime-status":
+            print_runtime_status(profile)
         elif args.command == "serial":
             print_serial(profile, args.lines)
         elif args.command == "debug-info":

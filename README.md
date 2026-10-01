@@ -23,8 +23,10 @@ replace the legacy robot loop.
   foundations;
 - bounded public ACS descriptors, registry, lifecycle state, and pure admission
   evaluation, plus an isolated five-node multi-peer reference transport;
-- a static C11 PID 1 micro-OS, P01 candidate-image tooling, and a bounded
-  first-boot CPU discovery, assembly, activation, and execution proof;
+- a static C11 permanent PID 1 micro-OS, P01 candidate-image tooling, a
+  bounded first-boot CPU discovery/assembly/activation proof, and an explicit
+  current-boot resident lab mode that supervises the selected CPU runtime and
+  public ACS reference transport;
 - a RAM-only assembly mechanism proof and a public external-component ABI.
 
 ### Validated in earlier development checkpoints
@@ -63,10 +65,13 @@ Linux kernel
 Linux remains responsible for mature kernel facilities and drivers unless a
 specific ownership contract says otherwise. The permanent P01 micro-OS mounts
 bounded volatile filesystems, validates a fixed startup manifest, launches
-public proof services, supervises them to terminal states, and emits serial and
-structured evidence. It does not by itself accept an assembly generation,
-install a system, activate production services, or prove normal-runtime
-readiness.
+public proof services, and emits serial and structured evidence. In the
+default conformance mode it supervises services to a terminal state and powers
+off. In explicitly selected lab mode it admits a scoped current-boot
+transition only after CPU and ACS evidence passes, keeps those two services
+under the same PID 1, and remains resident until stopped. This does not accept
+a production assembly generation, install a system, or claim readiness for
+future Node subsystems.
 
 ## CPU and GPU model
 
@@ -176,8 +181,10 @@ launchers without replacing their boot contract:
 
 ```sh
 ./python/node_lab.py list
-./python/node_lab.py start-all
+./python/node_lab.py start-all --mode lab
 ./python/node_lab.py group-status
+./python/node_lab.py runtime-summary
+./python/node_lab.py runtime-status node-001
 ./python/node_lab.py status node-001
 ./python/node_lab.py start node-001
 ./python/node_lab.py events node-001
@@ -193,7 +200,8 @@ launchers without replacing their boot contract:
 ```
 
 `restart`, `acs-events`, `cpu-info`, `cpu-summary`, `cpu-runtime`,
-`cpu-runtime-summary`, and `debug-info` are also available, and
+`cpu-runtime-summary`, `runtime-status`, `runtime-summary`, and `debug-info`
+are also available, and
 `start NODE --debug` reuses
 the paused DEV-001D workflow with profile-specific loopback GDB ports.
 Generated PID/state records and per-node serial/event logs live only beneath
@@ -213,6 +221,18 @@ isolated development/conformance transport, not peer discovery, authentication,
 a production-secure session, a cluster, or a private ACS control plane. The
 direct build, normal QEMU, and debug launchers remain independently usable and
 retain their no-network default.
+
+Managed `start`, `restart`, `start-all`, and `restart-all` accept an explicit
+`--mode conformance` or `--mode lab`; conformance remains the default. Lab mode
+selects resident behavior through bounded QEMU platform metadata while the
+same `build/artifacts/node-current.iso` is used in both modes. After the
+initial CPU probe and complete ACS exchange, PID 1 evaluates a separate
+transition gate, reports scoped runtime readiness, requests a second CPU work
+probe, and continues supervising the live CPU worker and ACS socket.
+`runtime-status` and `runtime-summary` report only observed structured records
+and managed-process identity. Runtime state is volatile, and the current stop
+command still performs an exact-identity bounded QEMU termination rather than
+an in-guest control request.
 
 Each managed guest also runs the existing generic CPU topology/capability
 provider during first boot. Bounded JSONL records keep raw observation,

@@ -19,7 +19,8 @@
 #define FIELD_MAX_RESTARTS (UINT32_C(1) << 9)
 #define FIELD_ARGUMENTS (UINT32_C(1) << 10)
 #define FIELD_ENVIRONMENT (UINT32_C(1) << 11)
-#define ALL_SERVICE_FIELDS ((UINT32_C(1) << 12) - UINT32_C(1))
+#define FIELD_RESIDENT_CAPABLE (UINT32_C(1) << 12)
+#define REQUIRED_SERVICE_FIELDS ((UINT32_C(1) << 12) - UINT32_C(1))
 
 static void set_result(struct node_p01_manifest_result *result,
                        enum node_p01_manifest_status status,
@@ -389,6 +390,7 @@ static enum node_p01_manifest_status set_service_field(
     else if (strcmp(key, "maximum_restart_count") == 0) bit = FIELD_MAX_RESTARTS;
     else if (strcmp(key, "arguments") == 0) bit = FIELD_ARGUMENTS;
     else if (strcmp(key, "environment") == 0) bit = FIELD_ENVIRONMENT;
+    else if (strcmp(key, "resident_capable") == 0) bit = FIELD_RESIDENT_CAPABLE;
     else {
         set_result(result, NODE_P01_MANIFEST_UNKNOWN_FIELD, line,
                    "unknown service field: %s", key);
@@ -444,6 +446,10 @@ static enum node_p01_manifest_status set_service_field(
         return parse_string_list(value, service->environment,
                                  &service->environment_count,
                                  NODE_P01_MAX_ENVIRONMENT, 1, line, result);
+    } else if (bit == FIELD_RESIDENT_CAPABLE &&
+               (strcmp(value, "true") == 0 || strcmp(value, "false") == 0)) {
+        service->resident_capable =
+            (uint8_t)(strcmp(value, "true") == 0);
     } else {
         set_result(result, NODE_P01_MANIFEST_INVALID_VALUE, line,
                    "invalid value for %s", key);
@@ -532,7 +538,8 @@ enum node_p01_manifest_status node_p01_manifest_parse(
                            "service_end without service_begin");
                 return result->status;
             }
-            if (service_fields != ALL_SERVICE_FIELDS) {
+            if ((service_fields & REQUIRED_SERVICE_FIELDS) !=
+                REQUIRED_SERVICE_FIELDS) {
                 set_result(result, NODE_P01_MANIFEST_MISSING_FIELD, line_number,
                            "service entry is missing a required field");
                 return result->status;

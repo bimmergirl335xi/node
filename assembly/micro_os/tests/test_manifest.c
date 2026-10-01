@@ -156,6 +156,26 @@ static void test_ordering(void) {
     }
 }
 
+static void test_resident_capability(void) {
+    char *changed = replace_once(
+        valid_manifest, "arguments=\n",
+        "resident_capable=true\narguments=\n");
+    struct node_p01_manifest manifest;
+    struct node_p01_manifest_result result;
+    if (changed == NULL ||
+        node_p01_manifest_parse(changed, changed == NULL ? 0U : strlen(changed),
+                                &manifest, &result) != NODE_P01_MANIFEST_ACCEPTED ||
+        manifest.service_count != 1U ||
+        manifest.services[0].resident_capable != 1U) {
+        (void)fprintf(stderr, "resident-capable manifest field failed\n");
+        ++failures;
+    }
+    free(changed);
+    expect_replacement("invalid resident capability", "arguments=\n",
+                       "resident_capable=maybe\narguments=\n",
+                       NODE_P01_MANIFEST_INVALID_VALUE);
+}
+
 static void test_json(void) {
     char output[32];
     const char input[] = "a\"b\\c\n";
@@ -198,6 +218,7 @@ int main(void) {
     test_dependency_cases();
     test_limits();
     test_ordering();
+    test_resident_capability();
     test_json();
     if (failures != 0) {
         (void)fprintf(stderr, "%d manifest tests failed\n", failures);

@@ -11,11 +11,30 @@ target_include_directories(
 target_compile_features(node_p01_manifest PUBLIC c_std_11)
 target_compile_options(node_p01_manifest PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
+add_library(
+    node_runtime_transition
+    STATIC
+        src/node_runtime_transition.c
+)
+target_include_directories(
+    node_runtime_transition
+    PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_compile_features(node_runtime_transition PUBLIC c_std_11)
+target_compile_options(
+    node_runtime_transition
+    PRIVATE -Wall -Wextra -Wpedantic -Werror
+)
+
 set(NODE_P01_ROOT "${PROJECT_BINARY_DIR}/assembly/p01-root")
 file(MAKE_DIRECTORY "${NODE_P01_ROOT}/node/candidates")
 
 add_executable(node_p01_init src/node_init.c)
-target_link_libraries(node_p01_init PRIVATE node_p01_manifest)
+target_link_libraries(
+    node_p01_init
+    PRIVATE node_p01_manifest node_runtime_transition
+)
 target_compile_options(node_p01_init PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_options(node_p01_init PRIVATE -static)
 set_target_properties(
@@ -209,6 +228,22 @@ if(PROMETHEUS_BUILD_TESTS)
         PRIVATE -Wall -Wextra -Wpedantic -Werror
     )
     add_test(NAME p01_manifest_contract COMMAND node_p01_manifest_tests)
+    add_executable(
+        node_runtime_transition_tests
+        tests/test_runtime_transition.c
+    )
+    target_link_libraries(
+        node_runtime_transition_tests
+        PRIVATE node_runtime_transition
+    )
+    target_compile_options(
+        node_runtime_transition_tests
+        PRIVATE -Wall -Wextra -Wpedantic -Werror
+    )
+    add_test(
+        NAME p01_runtime_transition
+        COMMAND node_runtime_transition_tests
+    )
     add_executable(
         node_cpu_assembly_decision_tests
         tests/test_cpu_assembly_decision.cpp

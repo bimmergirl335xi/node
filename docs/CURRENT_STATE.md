@@ -25,7 +25,7 @@ selected external Linux kernel
     -> bounded volatile filesystems
     -> fixed P01 startup manifest
     -> supervised public proof services
-    -> serial/JSONL evidence and bounded terminal action
+    -> explicit conformance terminal action or scoped resident lab transition
 ```
 
 `assembly/p01_boot/` builds candidate kernel/initramfs artifacts and, when the
@@ -50,7 +50,10 @@ EFI variables, or grants an artifact production authority.
   discovery;
 - invokes the existing generic CPU providers on every boot and evaluates their
   bounded evidence through a BOOT-owned CPU-only component-set decision;
-- emits human-readable and JSONL evidence to console/serial channels.
+- emits human-readable and JSONL evidence to console/serial channels;
+- selects explicit `conformance` or `lab` behavior without changing the image;
+- remains the permanent PID 1 while supervising resident CPU and ACS services
+  in lab mode, including bounded transition and shutdown handling.
 
 The CPU decision records observation, normalized capabilities, selected SIMD
 profile, `cpu.runtime=required`, and `gpu.runtime=not_required` as distinct
@@ -60,11 +63,17 @@ provenance. Every guest independently consumes its exported decision,
 materializes the candidate into volatile `/run`, validates its SHA-256, size,
 ELF/ABI/profile properties, launches it for the current boot, and runs a
 deterministic AVX2 probe through the existing bounded CPU thread pool after an
-explicit test-generation-only BOOT acceptance. This is a P01 conformance
-activation only: it adds no durable installation, reboot continuation,
-resident runtime handoff, or global readiness claim. The
-remaining included services are conformance probes; none are production CPU,
-GPU, ACS, network, or application providers.
+explicit test-generation-only BOOT acceptance. Conformance mode retains the
+bounded terminal P01 path. In lab mode the accepted candidate replaces only
+its assembly-service child process, retains a one-worker bounded pool, and
+answers a distinct post-transition execution probe while the permanent PID 1
+continues supervision. PID 1 admits that transition only after required
+startup, compatible CPU decision, candidate validation/activation, initial
+probe, and complete ACS evidence are all observed. The resulting readiness
+claim is limited to the current boot, x86_64/AVX2 candidate, public ACS
+reference transport, and lab profile. It adds no durable installation, reboot
+continuation, GPU readiness, MEM/storage readiness, or production-wide
+readiness claim.
 
 ## Current assembly state
 
@@ -146,10 +155,13 @@ and other accelerator paths remain incomplete or placeholder-level.
 
 The public Draft ACS-0000 through ACS-0009 specifications are retained under
 `docs/architecture/acs/`. The managed development image includes one narrow
-reference use of those contracts: a static conformance service uses explicit
+reference use of those contracts: a static service uses explicit
 registry declarations, real lifecycle transitions, advisory admission, active
 peer-specific binding/attachment snapshots, bounded UDP serialization, and
-receiver-side validation across the isolated five-node lab LAN. It is not production-secure
+receiver-side validation across the isolated five-node lab LAN. In conformance
+mode it exits after the bounded exchange; in lab mode it retains the same
+socket and bounded peer contexts, reports resident readiness, and validates
+and replies to a restarted peer without adding discovery or routing. It is not production-secure
 and supplies no authentication, discovery, trust, routing, reservation,
 persistence, descriptor removal, private ACS behavior, or public ACS C ABI.
 
@@ -168,10 +180,14 @@ runtime, ACS, and assembly components plus P0/P01-specific validation tooling.
 Earlier checkpoints recorded passing CPU-only, CUDA-enabled, repeated stress,
 strict-warning, sanitizer, and QEMU runs on their documented hosts.
 
-No build, test, benchmark, or QEMU boot was run during this repository
-normalization. Current-machine validation is therefore `not run`; earlier
-records should be treated as historical evidence only. `build/` was removed as
-disposable generated state and will be recreated by future build tooling.
+The current DEV-003C validation on the development host rebuilt the canonical
+image serially, passed all 39 host CTest cases and the strict-warning build,
+reconfirmed the direct BIOS conformance boot and poweroff path, and exercised
+all five managed guests in resident lab mode. All five reached scoped runtime
+readiness, passed their post-transition CPU probes and complete ACS exchange,
+remained healthy through a measured resident interval, isolated a single-node
+stop, and accepted that node's fresh restart and ACS rejoin. These are bounded
+development results for the current host and image, not production authority.
 
 ## Current development environment
 
@@ -216,8 +232,10 @@ restart the profile set concurrently; generated state and node-local
 serial/JSONL logs remain disposable under `build/virtual/NODE/`. Stop
 operations require a recorded PID plus matching process-start and QEMU command
 identity, preventing a stale PID from authorizing a signal. Status reports
-observed process and boot evidence only; it does not infer service health or
-runtime readiness. The guests share one unprivileged QEMU datagram-multicast
+observed process and structured boot/runtime evidence only. `runtime-status`
+and `runtime-summary` require explicit transition, readiness, resident CPU/ACS,
+and post-transition-probe records; they do not infer missing health. The guests
+share one unprivileged QEMU datagram-multicast
 Ethernet segment bound to host loopback using `virtio-net-pci`; no host bridge, TAP,
 NAT, internet path, or persistent network state is created. The kernel already
 contains the required virtio networking support. A managed profile selector is
@@ -231,20 +249,30 @@ identity, trust, or authority. `node_lab.py acs-events NODE` surfaces the
 resulting public evidence without making a policy judgment. This remains a
 disposable reference transport, not a cluster or ACS control plane.
 
+Managed start/restart commands accept explicit `conformance` and `lab` modes;
+conformance remains the default. Both use the one canonical ISO. Lab mode keeps
+CPU and ACS children in their original manifest slots under permanent PID 1
+supervision after a pure bounded transition evaluation. An unexpected
+essential-child exit is observed as runtime degradation. The host controller's
+normal stop remains exact-identity QEMU termination: PID 1 contains a bounded
+signal-driven resident shutdown path, but this phase adds no guest control
+protocol and therefore does not claim that host-initiated stops exercise it.
+
 `node_lab.py cpu-info NODE` reads the bounded node-local CPU JSONL records and
 reports only explicit observations and decisions. `cpu-summary` compares the
 five managed nodes without inferring missing evidence. CPU inspection remains
 separate from runtime selection, assembly, activation, and readiness.
 `cpu-runtime NODE` and `cpu-runtime-summary` similarly expose the distinct
 build request, candidate, validation, activation, and probe outcomes. They do
-not convert successful conformance execution into Node runtime readiness.
+not convert successful conformance execution into Node runtime readiness. Only
+the explicit lab transition produces the scoped current-boot readiness record.
 
 `main` is stable/public, `dev` is active integration, and specialized lanes own
 subsystem work before integration. See `AGENTS.md` for branch rules.
 
 ## Known incomplete areas
 
-- production Node service graph and runtime activation;
+- production Node service graph, restart policy, and general runtime activation;
 - migration of production robot behavior out of the legacy CUDA program;
 - CPU affinity/NUMA orchestration and typed CPU kernel execution;
 - general GPU payload and memory-lease execution;

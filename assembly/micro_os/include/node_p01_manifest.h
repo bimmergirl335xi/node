@@ -71,6 +71,7 @@ struct node_p01_service {
     enum node_p01_expected_result expected_result;
     enum node_p01_restart_policy restart_policy;
     uint32_t maximum_restart_count;
+    uint8_t resident_capable;
     uint8_t dependency_count;
     char dependencies[NODE_P01_MAX_DEPENDENCIES][NODE_P01_MAX_IDENTITY_BYTES];
     uint8_t argument_count;
